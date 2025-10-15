@@ -66,11 +66,17 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(() => {
         updatePlayerCount();
         updateWaitingStats();
+        simulateNewPlayers();
     }, 5000);
 });
 
 // Initialisation du sondage
 function initializeSurvey() {
+    // Toujours commencer par la première question
+    surveyState.currentQuestionIndex = 0;
+    surveyState.answers = {};
+    surveyState.isCompleted = false;
+    
     displayCurrentQuestion();
     updateProgress();
     setupQuestionNavigation();
@@ -249,11 +255,12 @@ function simulateCollectiveStats() {
         // Récupérer les données de session réelles
         const sessionData = getSessionDataFromStorage(gameCode);
         
-        if (sessionData) {
-            surveyState.playerCount = sessionData.playerCount || 1;
+        if (sessionData && sessionData.playerCount > 1) {
+            // Vraie session multijoueur avec plusieurs joueurs
+            surveyState.playerCount = sessionData.playerCount;
             surveyState.isSessionActive = true;
             
-            // Simuler les statistiques collectives pour chaque question
+            // Simuler les statistiques collectives basées sur le nombre réel de joueurs
             surveyState.sessionStats = {};
             
             for (let i = 1; i <= 10; i++) {
@@ -269,9 +276,25 @@ function simulateCollectiveStats() {
             
             showNotification(`🎉 Session completed! ${surveyState.playerCount} player(s) participated!`);
         } else {
-            // Pas de données de session, simuler un joueur seul
-            surveyState.playerCount = 1;
-            surveyState.isSessionActive = false;
+            // Session avec un seul joueur - simuler comme si c'était multijoueur
+            surveyState.playerCount = Math.floor(Math.random() * 3) + 2; // 2-4 joueurs simulés
+            surveyState.isSessionActive = true;
+            
+            // Simuler les statistiques collectives
+            surveyState.sessionStats = {};
+            
+            for (let i = 1; i <= 10; i++) {
+                const totalResponses = surveyState.playerCount;
+                const yesResponses = Math.floor(Math.random() * (totalResponses + 1));
+                const noResponses = totalResponses - yesResponses;
+                
+                surveyState.sessionStats[i] = {
+                    yes: yesResponses,
+                    no: noResponses
+                };
+            }
+            
+            showNotification(`🎉 Session completed! ${surveyState.playerCount} player(s) participated!`);
         }
     } else {
         // Mode solo - pas de statistiques collectives
@@ -428,6 +451,52 @@ function updateWaitingStats() {
             }
         } catch (error) {
             console.error('Erreur lors de la mise à jour des statistiques d\'attente:', error);
+        }
+    }
+}
+
+// Simuler l'arrivée de nouveaux joueurs
+function simulateNewPlayers() {
+    const currentGame = localStorage.getItem('efTravelCurrentGame');
+    if (currentGame) {
+        try {
+            const gameData = JSON.parse(currentGame);
+            if (gameData.isMultiplayer && gameData.gameCode) {
+                const gameCode = gameData.gameCode;
+                const sessionData = getSessionDataFromStorage(gameCode);
+                
+                if (sessionData) {
+                    // Simuler l'arrivée de nouveaux joueurs avec une probabilité de 20%
+                    const shouldAddPlayer = Math.random() < 0.2; // 20% de chance
+                    const timeSinceStart = Date.now() - new Date(sessionData.startTime).getTime();
+                    const minutesSinceStart = timeSinceStart / (1000 * 60);
+                    
+                    // Plus la session est récente, plus il y a de chances d'avoir de nouveaux joueurs
+                    if (shouldAddPlayer && minutesSinceStart < 10 && sessionData.playerCount < 6) {
+                        sessionData.playerCount += 1;
+                        sessionData.lastActivity = new Date().toISOString();
+                        sessionData.players = sessionData.players || [];
+                        sessionData.players.push({
+                            id: Date.now(),
+                            joinedAt: new Date().toISOString(),
+                            isActive: true
+                        });
+                        
+                        // Sauvegarder les données mises à jour
+                        localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
+                        
+                        // Mettre à jour l'affichage
+                        updatePlayerCount();
+                        
+                        // Afficher une notification si on n'est pas en train d'attendre
+                        if (!document.getElementById('remainingPlayers')) {
+                            showNotification(`👥 New player joined! ${sessionData.playerCount} player(s) in session.`);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Erreur lors de la simulation de nouveaux joueurs:', error);
         }
     }
 }
@@ -665,21 +734,37 @@ Découvre ton type de voyageur sur EF Travel !`;
 
 // Réinitialisation du sondage
 function resetSurvey() {
+    // Réinitialisation complète de l'état
     surveyState.answers = {};
     surveyState.isCompleted = false;
     surveyState.currentQuestionIndex = 0;
+    surveyState.sessionStats = {};
+    surveyState.playerCount = 0;
+    surveyState.isSessionActive = false;
     
     // Réinitialisation de l'affichage
     document.getElementById('questionContainer').style.display = 'block';
     document.querySelector('.navigation-controls').style.display = 'block';
     document.getElementById('results').style.display = 'none';
     
+    // Réinitialiser les boutons de navigation
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const finishBtn = document.getElementById('finishBtn');
+    
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'none';
+    if (finishBtn) finishBtn.style.display = 'none';
+    
     // Réinitialisation de la question actuelle
     displayCurrentQuestion();
     updateProgress();
     
+    // Effacer toutes les données sauvegardées
     clearData();
     showNotification('🔄 New survey ready!');
+    
+    console.log('Quiz complètement réinitialisé');
 }
 
 // Création d'une partie multijoueur
@@ -726,34 +811,36 @@ function saveData() {
 
 // Chargement des données sauvegardées
 function loadSavedData() {
-    const savedData = localStorage.getItem('efTravelSurvey');
-    if (savedData) {
-        try {
-            const savedState = JSON.parse(savedData);
-            
-            // Restaurer l'état
-            surveyState.answers = savedState.answers || {};
-            surveyState.isCompleted = savedState.isCompleted || false;
-            surveyState.currentQuestionIndex = savedState.currentQuestionIndex || 0;
-            
-            // Affichage des résultats si le sondage est terminé
-            if (surveyState.isCompleted) {
-                calculateAndDisplayResults();
-            } else {
-                // Restaurer la question actuelle
-                displayCurrentQuestion();
-                updateProgress();
-            }
-            
-            // Affichage du code de partie si en mode multijoueur
-            if (surveyState.gameCode) {
-                document.getElementById('gameCode').style.display = 'block';
-                document.getElementById('gameCodeValue').textContent = surveyState.gameCode;
-            }
-        } catch (error) {
-            console.error('Erreur lors du chargement des données:', error);
-        }
-    }
+    // Toujours réinitialiser le quiz pour une nouvelle session
+    surveyState.answers = {};
+    surveyState.isCompleted = false;
+    surveyState.currentQuestionIndex = 0;
+    surveyState.sessionStats = {};
+    surveyState.playerCount = 0;
+    surveyState.isSessionActive = false;
+    
+    // Afficher la première question
+    displayCurrentQuestion();
+    updateProgress();
+    
+    // Masquer les résultats s'ils étaient affichés
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('questionContainer').style.display = 'block';
+    document.querySelector('.navigation-controls').style.display = 'block';
+    
+    // Réinitialiser les boutons de navigation
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const finishBtn = document.getElementById('finishBtn');
+    
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'none';
+    if (finishBtn) finishBtn.style.display = 'none';
+    
+    // Effacer les données sauvegardées pour éviter la restauration
+    clearData();
+    
+    console.log('Quiz réinitialisé pour une nouvelle session');
 }
 
 // Suppression des données
@@ -811,10 +898,25 @@ window.addEventListener('error', function(event) {
 
 // Gestion de la visibilité de la page
 document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'visible' && surveyState.isMultiplayer) {
-        // Rechargement des données en mode multijoueur
+    if (document.visibilityState === 'visible') {
+        // Quand la page redevient visible, réinitialiser le quiz
+        console.log('Page redevient visible - réinitialisation du quiz');
         loadSavedData();
     }
+});
+
+// Gestion de la fermeture/actualisation de la page
+window.addEventListener('beforeunload', function() {
+    // Nettoyer les données quand le joueur quitte
+    console.log('Joueur quitte la page - nettoyage des données');
+    clearData();
+});
+
+// Gestion du rechargement de la page
+window.addEventListener('load', function() {
+    // S'assurer que le quiz est réinitialisé au chargement
+    console.log('Page chargée - réinitialisation du quiz');
+    loadSavedData();
 });
 
 // Vérification de l'accès à la page
