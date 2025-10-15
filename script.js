@@ -61,6 +61,9 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     loadSavedData();
     displayGameInfo();
+    
+    // Mettre à jour le nombre de joueurs toutes les 5 secondes en mode multijoueur
+    setInterval(updatePlayerCount, 5000);
 });
 
 // Initialisation du sondage
@@ -232,25 +235,74 @@ function finishSurvey() {
 
 // Simulation des statistiques collectives (en attendant un vrai serveur)
 function simulateCollectiveStats() {
-    // Simuler un nombre de joueurs aléatoire entre 3 et 8
-    surveyState.playerCount = Math.floor(Math.random() * 6) + 3;
-    surveyState.isSessionActive = true;
+    // Détecter si c'est vraiment une session multijoueur
+    const gameCode = surveyState.gameCode;
+    const isMultiplayerSession = surveyState.isMultiplayer && gameCode;
     
-    // Simuler les statistiques collectives pour chaque question
-    surveyState.sessionStats = {};
-    
-    for (let i = 1; i <= 10; i++) {
-        const totalResponses = surveyState.playerCount;
-        const yesResponses = Math.floor(Math.random() * (totalResponses + 1));
-        const noResponses = totalResponses - yesResponses;
+    if (isMultiplayerSession) {
+        // Récupérer les données de session réelles
+        const sessionData = getSessionDataFromStorage(gameCode);
         
-        surveyState.sessionStats[i] = {
-            yes: yesResponses,
-            no: noResponses
-        };
+        if (sessionData) {
+            surveyState.playerCount = sessionData.playerCount || 1;
+            surveyState.isSessionActive = true;
+            
+            // Simuler les statistiques collectives pour chaque question
+            surveyState.sessionStats = {};
+            
+            for (let i = 1; i <= 10; i++) {
+                const totalResponses = surveyState.playerCount;
+                const yesResponses = Math.floor(Math.random() * (totalResponses + 1));
+                const noResponses = totalResponses - yesResponses;
+                
+                surveyState.sessionStats[i] = {
+                    yes: yesResponses,
+                    no: noResponses
+                };
+            }
+            
+            showNotification(`🎉 Session completed! ${surveyState.playerCount} player(s) participated!`);
+        } else {
+            // Pas de données de session, simuler un joueur seul
+            surveyState.playerCount = 1;
+            surveyState.isSessionActive = false;
+        }
+    } else {
+        // Mode solo - pas de statistiques collectives
+        surveyState.playerCount = 1;
+        surveyState.isSessionActive = false;
     }
-    
-    showNotification(`🎉 Session completed! ${surveyState.playerCount} player(s) participated!`);
+}
+
+// Récupérer les données de session depuis le localStorage
+function getSessionDataFromStorage(gameCode) {
+    const sessionKey = `efTravelSession_${gameCode}`;
+    const data = localStorage.getItem(sessionKey);
+    return data ? JSON.parse(data) : null;
+}
+
+// Mettre à jour l'affichage du nombre de joueurs
+function updatePlayerCount() {
+    const currentGame = localStorage.getItem('efTravelCurrentGame');
+    if (currentGame) {
+        try {
+            const gameData = JSON.parse(currentGame);
+            if (gameData.isMultiplayer && gameData.gameCode) {
+                const sessionData = getSessionDataFromStorage(gameData.gameCode);
+                const playerCountInfo = document.getElementById('playerCountInfo');
+                const playerCount = document.getElementById('playerCount');
+                
+                if (sessionData && sessionData.playerCount) {
+                    playerCountInfo.style.display = 'block';
+                    playerCount.textContent = sessionData.playerCount;
+                } else {
+                    playerCountInfo.style.display = 'none';
+                }
+            }
+        } catch (error) {
+            console.error('Erreur lors de la mise à jour du nombre de joueurs:', error);
+        }
+    }
 }
 
 
@@ -398,23 +450,37 @@ function displayResults(results) {
             </div>
         `;
         
-        // Affichage des statistiques personnelles
+        // Affichage des statistiques personnelles avec pourcentages détaillés
         statsContainer.innerHTML = '';
         
         for (let i = 1; i <= 10; i++) {
             const answer = results.answers[i];
             const questionData = SURVEY_CONFIG.questions[i - 1];
             const questionText = `${questionData.icon} ${questionData.text}`;
-            const percentage = answer === 'yes' ? 100 : 0;
+            const yesPercentage = answer === 'yes' ? 100 : 0;
+            const noPercentage = answer === 'no' ? 100 : 0;
             
             const statItem = document.createElement('div');
             statItem.className = 'stat-item';
             statItem.innerHTML = `
                 <div class="stat-question">${questionText}</div>
-                <div class="stat-bar">
-                    <div class="stat-fill" style="width: ${percentage}%"></div>
+                <div class="personal-stats">
+                    <div class="yes-stat">
+                        <div class="stat-label">Yes</div>
+                        <div class="stat-bar">
+                            <div class="stat-fill yes-fill" style="width: ${yesPercentage}%"></div>
+                        </div>
+                        <div class="stat-percentage">${yesPercentage}%</div>
+                    </div>
+                    <div class="no-stat">
+                        <div class="stat-label">No</div>
+                        <div class="stat-bar">
+                            <div class="stat-fill no-fill" style="width: ${noPercentage}%"></div>
+                        </div>
+                        <div class="stat-percentage">${noPercentage}%</div>
+                    </div>
                 </div>
-                <div class="stat-percentage">${answer === 'yes' ? 'Oui' : 'Non'} (${percentage}%)</div>
+                <div class="your-answer">Your answer: <strong>${answer === 'yes' ? 'Yes' : 'No'}</strong></div>
             `;
             
             statsContainer.appendChild(statItem);
@@ -655,13 +721,26 @@ function displayGameInfo() {
             const gameMode = document.getElementById('gameMode');
             const gameCodeInfo = document.getElementById('gameCodeInfo');
             const currentGameCode = document.getElementById('currentGameCode');
+            const playerCountInfo = document.getElementById('playerCountInfo');
+            const playerCount = document.getElementById('playerCount');
             
             if (gameData.isMultiplayer) {
-                gameMode.textContent = 'Multijoueur';
+                gameMode.textContent = 'Multiplayer';
                 gameCodeInfo.style.display = 'block';
                 currentGameCode.textContent = gameData.gameCode;
+                
+                // Afficher le nombre de joueurs dans la session
+                const sessionData = getSessionDataFromStorage(gameData.gameCode);
+                if (sessionData && sessionData.playerCount) {
+                    playerCountInfo.style.display = 'block';
+                    playerCount.textContent = sessionData.playerCount;
+                } else {
+                    playerCountInfo.style.display = 'none';
+                }
             } else {
                 gameMode.textContent = 'Solo';
+                gameCodeInfo.style.display = 'none';
+                playerCountInfo.style.display = 'none';
             }
             
             gameInfo.style.display = 'block';

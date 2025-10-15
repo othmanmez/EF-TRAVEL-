@@ -149,6 +149,8 @@ function createGame() {
         gameModes.style.display = 'none';
     }
     
+    // Initialiser les données de session
+    saveSessionData(gameCode, appState.currentGame);
     saveGameState();
     showNotification(`🎯 Game created! Code: ${gameCode}`);
 }
@@ -172,7 +174,7 @@ function joinGame() {
     const gameCode = document.getElementById('gameCodeInput').value.trim().toUpperCase();
     
     if (!gameCode || gameCode.length !== 6) {
-        showJoinStatus('❌ Code invalide ! Le code doit faire 6 caractères.', 'error');
+        showJoinStatus('❌ Invalid code! The code must be 6 characters.', 'error');
         return;
     }
     
@@ -183,11 +185,24 @@ function joinGame() {
         appState.currentGame = {
             type: 'multiplayer',
             code: gameCode,
-            joinTime: new Date().toISOString()
+            joinTime: new Date().toISOString(),
+            isJoining: true // Marquer que c'est un joueur qui rejoint
         };
         
+        // Simuler la détection d'autres joueurs dans la session
+        const sessionData = getSessionData(gameCode);
+        if (sessionData) {
+            appState.currentGame.playerCount = sessionData.playerCount || 1;
+            appState.currentGame.startTime = sessionData.startTime;
+        } else {
+            // Première personne à rejoindre cette session
+            appState.currentGame.playerCount = 1;
+            appState.currentGame.startTime = new Date().toISOString();
+        }
+        
         saveGameState();
-        showJoinStatus('✅ Game joined successfully!', 'success');
+        saveSessionData(gameCode, appState.currentGame);
+        showJoinStatus(`✅ Game joined successfully! ${appState.currentGame.playerCount} player(s) in session.`, 'success');
         
         setTimeout(() => {
             redirectToQuiz();
@@ -355,6 +370,32 @@ document.head.appendChild(style);
 window.addEventListener('error', function(event) {
     console.error('Erreur JavaScript:', event.error);
 });
+
+// Gestion des données de session
+function saveSessionData(gameCode, gameData) {
+    const sessionKey = `efTravelSession_${gameCode}`;
+    const existingData = getSessionData(gameCode);
+    
+    if (existingData) {
+        // Incrémenter le nombre de joueurs
+        existingData.playerCount = (existingData.playerCount || 1) + 1;
+        localStorage.setItem(sessionKey, JSON.stringify(existingData));
+    } else {
+        // Nouvelle session
+        localStorage.setItem(sessionKey, JSON.stringify({
+            gameCode: gameCode,
+            startTime: gameData.startTime,
+            playerCount: 1,
+            lastActivity: new Date().toISOString()
+        }));
+    }
+}
+
+function getSessionData(gameCode) {
+    const sessionKey = `efTravelSession_${gameCode}`;
+    const data = localStorage.getItem(sessionKey);
+    return data ? JSON.parse(data) : null;
+}
 
 // Fonction utilitaire pour le débogage
 function debugAppState() {
