@@ -492,46 +492,39 @@ function savePlayerCompletion() {
         try {
             const gameData = JSON.parse(currentGame);
             const gameCode = gameData.gameCode;
-            const playerId = Date.now() + Math.random() * 1000; // ID unique
             
-            console.log(`Sauvegarde de la completion pour le joueur ${playerId} dans la session ${gameCode}`);
-            
-            // Sauvegarder les réponses du joueur
-            const playerKey = `efTravelPlayer_${gameCode}_${playerId}`;
-            const playerData = {
-                gameCode: gameCode,
-                answers: surveyState.answers,
-                completedAt: new Date().toISOString(),
-                playerId: playerId,
-                sessionId: gameCode,
-                isActive: true
-            };
-            
-            localStorage.setItem(playerKey, JSON.stringify(playerData));
-            console.log('Données joueur sauvegardées:', playerData);
-            
-            // Mettre à jour les données de session
-            const sessionData = getSessionDataFromStorage(gameCode);
-            if (sessionData) {
-                sessionData.completedPlayers = (sessionData.completedPlayers || 0) + 1;
-                sessionData.lastCompletion = new Date().toISOString();
-                sessionData.activePlayers = sessionData.activePlayers || [];
-                sessionData.activePlayers.push({
-                    playerId: playerId,
-                    completedAt: new Date().toISOString(),
-                    isActive: true
-                });
-                
-                localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
-                console.log('Données de session mises à jour:', sessionData);
+            // Utiliser Socket.io si disponible
+            if (window.socketManager && window.socketManager.isConnected) {
+                console.log('Sauvegarde via Socket.io');
+                window.socketManager.saveAnswers(surveyState.answers);
+                window.socketManager.playerCompleted(surveyState.answers);
             } else {
-                console.log('Aucune donnée de session trouvée pour', gameCode);
+                // Fallback vers localStorage
+                console.log('Sauvegarde via localStorage (fallback)');
+                const playerId = Date.now() + Math.random() * 1000;
+                
+                const playerKey = `efTravelPlayer_${gameCode}_${playerId}`;
+                const playerData = {
+                    gameCode: gameCode,
+                    answers: surveyState.answers,
+                    completedAt: new Date().toISOString(),
+                    playerId: playerId,
+                    sessionId: gameCode,
+                    isActive: true
+                };
+                
+                localStorage.setItem(playerKey, JSON.stringify(playerData));
+                
+                const sessionData = getSessionDataFromStorage(gameCode);
+                if (sessionData) {
+                    sessionData.completedPlayers = (sessionData.completedPlayers || 0) + 1;
+                    sessionData.lastCompletion = new Date().toISOString();
+                    localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
+                }
             }
         } catch (error) {
             console.error('Erreur lors de la sauvegarde de la completion:', error);
         }
-    } else {
-        console.log('Aucune donnée de jeu trouvée');
     }
 }
 
@@ -1207,4 +1200,29 @@ function debugSurvey() {
     console.log('État du sondage:', surveyState);
     console.log('Données sauvegardées:', localStorage.getItem('efTravelSurvey'));
     console.log('Partie actuelle:', localStorage.getItem('efTravelCurrentGame'));
+}
+
+// Afficher les résultats collectifs reçus via Socket.io
+function displayCollectiveResults(data) {
+    console.log('Affichage des résultats collectifs:', data);
+    
+    // Mettre à jour l'état du sondage
+    surveyState.playerCount = data.totalPlayers;
+    surveyState.isSessionActive = true;
+    surveyState.sessionStats = {};
+    
+    // Convertir les données du serveur au format attendu
+    for (let i = 1; i <= 10; i++) {
+        const questionData = data.collectiveStats[i];
+        if (questionData) {
+            surveyState.sessionStats[i] = {
+                yes: questionData.yesCount,
+                no: questionData.noCount
+            };
+        }
+    }
+    
+    // Afficher les résultats
+    calculateAndDisplayResults();
+    saveData();
 }

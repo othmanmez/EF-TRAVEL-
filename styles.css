@@ -46,6 +46,28 @@ body {
     position: relative;
 }
 
+.connection-status {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.connection-status span {
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.connection-status .connected {
+    background: #4CAF50;
+    color: white;
+}
+
+.connection-status .disconnected {
+    background: #F44336;
+    color: white;
+}
+
 .back-btn {
     position: absolute;
     top: -10px;

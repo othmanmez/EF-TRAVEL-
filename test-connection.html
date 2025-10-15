@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Connection - EF Travel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .connected { background: #4CAF50; color: white; }
+        .disconnected { background: #F44336; color: white; }
+        .info { background: #2196F3; color: white; }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #45a049; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .log {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌍 EF Travel - Test de Connexion</h1>
+    
+    <div class="test-section">
+        <h2>📡 Statut de Connexion</h2>
+        <div id="connectionStatus" class="status disconnected">🔴 Déconnecté</div>
+        <div id="serverInfo" class="status info">⏳ Connexion en cours...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>🧪 Tests de Fonctionnalités</h2>
+        <button id="testJoin" onclick="testJoinSession()">Rejoindre une session test</button>
+        <button id="testSave" onclick="testSaveAnswers()" disabled>Sauvegarder des réponses test</button>
+        <button id="testComplete" onclick="testPlayerComplete()" disabled>Marquer comme terminé</button>
+        <button id="testStats" onclick="testGetStats()" disabled>Obtenir les statistiques</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>📊 Logs en Temps Réel</h2>
+        <div id="logs" class="log"></div>
+        <button onclick="clearLogs()">Effacer les logs</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>🔗 Liens Utiles</h2>
+        <p><a href="/" target="_blank">🏠 Page d'accueil</a></p>
+        <p><a href="/quiz" target="_blank">🎮 Page du quiz</a></p>
+        <p><a href="/api/session/TEST01" target="_blank">📊 API Session Test</a></p>
+    </div>
+
+    <!-- Socket.io -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket = null;
+        let isConnected = false;
+        let currentGameCode = null;
+        
+        // Initialiser la connexion
+        function initConnection() {
+            socket = io();
+            
+            socket.on('connect', () => {
+                isConnected = true;
+                updateStatus('connected', '🟢 Connecté au serveur');
+                updateServerInfo('Serveur: ' + socket.io.uri);
+                log('✅ Connexion établie avec le serveur');
+                enableButtons();
+            });
+            
+            socket.on('disconnect', () => {
+                isConnected = false;
+                updateStatus('disconnected', '🔴 Déconnecté du serveur');
+                log('❌ Déconnecté du serveur');
+                disableButtons();
+            });
+            
+            socket.on('player-joined', (data) => {
+                log('👥 Joueur rejoint: ' + JSON.stringify(data));
+            });
+            
+            socket.on('player-left', (data) => {
+                log('👋 Joueur parti: ' + JSON.stringify(data));
+            });
+            
+            socket.on('player-finished', (data) => {
+                log('✅ Joueur terminé: ' + JSON.stringify(data));
+            });
+            
+            socket.on('collective-results', (data) => {
+                log('📊 Résultats collectifs: ' + JSON.stringify(data));
+            });
+            
+            socket.on('session-stats', (data) => {
+                log('📈 Statistiques: ' + JSON.stringify(data));
+            });
+        }
+        
+        function updateStatus(type, message) {
+            const status = document.getElementById('connectionStatus');
+            status.className = 'status ' + type;
+            status.textContent = message;
+        }
+        
+        function updateServerInfo(message) {
+            document.getElementById('serverInfo').textContent = message;
+        }
+        
+        function log(message) {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            logs.innerHTML += `[${timestamp}] ${message}\n`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+        
+        function enableButtons() {
+            document.getElementById('testJoin').disabled = false;
+        }
+        
+        function disableButtons() {
+            document.getElementById('testJoin').disabled = true;
+            document.getElementById('testSave').disabled = true;
+            document.getElementById('testComplete').disabled = true;
+            document.getElementById('testStats').disabled = true;
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+        
+        // Tests de fonctionnalités
+        function testJoinSession() {
+            if (!isConnected) return;
+            
+            currentGameCode = 'TEST' + Math.floor(Math.random() * 1000);
+            log('🎮 Test: Rejoindre la session ' + currentGameCode);
+            
+            socket.emit('join-session', {
+                gameCode: currentGameCode,
+                playerName: 'TestPlayer_' + Date.now()
+            });
+            
+            document.getElementById('testSave').disabled = false;
+            document.getElementById('testStats').disabled = false;
+        }
+        
+        function testSaveAnswers() {
+            if (!isConnected || !currentGameCode) return;
+            
+            const testAnswers = {
+                1: 'yes',
+                2: 'no',
+                3: 'yes',
+                4: 'no',
+                5: 'yes'
+            };
+            
+            log('💾 Test: Sauvegarde des réponses');
+            socket.emit('save-answers', {
+                gameCode: currentGameCode,
+                answers: testAnswers
+            });
+            
+            document.getElementById('testComplete').disabled = false;
+        }
+        
+        function testPlayerComplete() {
+            if (!isConnected || !currentGameCode) return;
+            
+            const testAnswers = {
+                1: 'yes', 2: 'no', 3: 'yes', 4: 'no', 5: 'yes',
+                6: 'no', 7: 'yes', 8: 'no', 9: 'yes', 10: 'no'
+            };
+            
+            log('🏁 Test: Joueur terminé');
+            socket.emit('player-completed', {
+                gameCode: currentGameCode,
+                answers: testAnswers
+            });
+        }
+        
+        function testGetStats() {
+            if (!isConnected || !currentGameCode) return;
+            
+            log('📊 Test: Demande des statistiques');
+            socket.emit('get-session-stats', {
+                gameCode: currentGameCode
+            });
+        }
+        
+        // Initialiser au chargement de la page
+        document.addEventListener('DOMContentLoaded', initConnection);
+    </script>
+</body>
+</html>

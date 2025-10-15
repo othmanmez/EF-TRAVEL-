@@ -149,12 +149,17 @@ function createGame() {
         gameModes.style.display = 'none';
     }
     
-    // Initialiser les données de session avec un joueur
-    appState.currentGame.playerCount = 1;
-    appState.currentGame.startTime = new Date().toISOString();
+    // Utiliser Socket.io si disponible
+    if (window.socketManager && window.socketManager.isConnected) {
+        console.log('Création de partie via Socket.io');
+        window.socketManager.joinSession(gameCode, `Host_${Date.now()}`);
+    } else {
+        console.log('Création de partie via localStorage (fallback)');
+        appState.currentGame.playerCount = 1;
+        appState.currentGame.startTime = new Date().toISOString();
+        saveSessionData(gameCode, appState.currentGame);
+    }
     
-    // Initialiser les données de session
-    saveSessionData(gameCode, appState.currentGame);
     saveGameState();
     showNotification(`🎯 Game created! Code: ${gameCode}`);
 }
@@ -182,56 +187,58 @@ function joinGame() {
         return;
     }
     
-    // Simulation de la validation du code
-    if (validateGameCode(gameCode)) {
+    // Utiliser Socket.io si disponible
+    if (window.socketManager && window.socketManager.isConnected) {
+        console.log('Rejoindre partie via Socket.io');
         appState.isMultiplayer = true;
         appState.gameCode = gameCode;
         appState.currentGame = {
             type: 'multiplayer',
             code: gameCode,
             joinTime: new Date().toISOString(),
-            isJoining: true // Marquer que c'est un joueur qui rejoint
+            isJoining: true
         };
         
-        // Détecter les autres joueurs dans la session
-        const sessionData = getSessionData(gameCode);
-        if (sessionData) {
-            // Vérifier si c'est vraiment un nouveau joueur
-            const timeSinceLastActivity = Date.now() - new Date(sessionData.lastActivity).getTime();
-            const isNewPlayer = timeSinceLastActivity > 30000; // Plus de 30 secondes
-            
-            if (isNewPlayer) {
-                // Nouveau joueur - incrémenter le compteur
-                sessionData.playerCount = (sessionData.playerCount || 1) + 1;
-                sessionData.lastActivity = new Date().toISOString();
-                sessionData.players = sessionData.players || [];
-                sessionData.players.push({
-                    id: Date.now(),
-                    joinedAt: new Date().toISOString(),
-                    isActive: true
-                });
-                
-                // Sauvegarder les données mises à jour
-                localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
-            }
-            
-            appState.currentGame.playerCount = sessionData.playerCount;
-            appState.currentGame.startTime = sessionData.startTime;
-        } else {
-            // Première personne à rejoindre cette session
-            appState.currentGame.playerCount = 1;
-            appState.currentGame.startTime = new Date().toISOString();
-        }
+        window.socketManager.joinSession(gameCode, `Player_${Date.now()}`);
         
         saveGameState();
-        saveSessionData(gameCode, appState.currentGame);
-        showJoinStatus(`✅ Game joined successfully! ${appState.currentGame.playerCount} player(s) in session.`, 'success');
+        showJoinStatus(`✅ Game joined successfully! Connecting to server...`, 'success');
         
         setTimeout(() => {
             redirectToQuiz();
         }, 1500);
     } else {
-        showJoinStatus('❌ Game code not found! Check the code.', 'error');
+        // Fallback vers localStorage
+        console.log('Rejoindre partie via localStorage (fallback)');
+        if (validateGameCode(gameCode)) {
+            appState.isMultiplayer = true;
+            appState.gameCode = gameCode;
+            appState.currentGame = {
+                type: 'multiplayer',
+                code: gameCode,
+                joinTime: new Date().toISOString(),
+                isJoining: true
+            };
+            
+            const sessionData = getSessionData(gameCode);
+            if (sessionData) {
+                appState.currentGame.playerCount = sessionData.playerCount;
+                appState.currentGame.startTime = sessionData.startTime;
+            } else {
+                appState.currentGame.playerCount = 1;
+                appState.currentGame.startTime = new Date().toISOString();
+            }
+            
+            saveGameState();
+            saveSessionData(gameCode, appState.currentGame);
+            showJoinStatus(`✅ Game joined successfully! ${appState.currentGame.playerCount} player(s) in session.`, 'success');
+            
+            setTimeout(() => {
+                redirectToQuiz();
+            }, 1500);
+        } else {
+            showJoinStatus('❌ Game code not found! Check the code.', 'error');
+        }
     }
 }
 
