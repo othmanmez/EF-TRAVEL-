@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌍 EF Travel - Travel Survey</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <button id="backToHomeBtn" class="back-btn">← Back to Home</button>
+                <h1 class="main-title">🌍 EF Travel</h1>
+                <p class="subtitle">Answer these fun questions about your travel adventures! 😄✈️</p>
+                <div id="gameInfo" class="game-info" style="display: none;">
+                    <p>🎮 Mode: <span id="gameMode"></span></p>
+                    <p id="gameCodeInfo" style="display: none;">Code: <span id="currentGameCode"></span></p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Survey Section -->
+        <main class="survey-container">
+            <div class="survey-intro">
+                <h2>🎯 Travel Survey</h2>
+                <p>Discover what type of traveler you are!</p>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <p class="progress-text">Question <span id="currentQuestionNumber">1</span> of 10</p>
+                </div>
+            </div>
+
+            <!-- Question Container -->
+            <div id="questionContainer" class="question-container">
+                <div class="question" id="currentQuestion">
+                    <div class="question-image-container">
+                        <img id="questionImage" src="" alt="Image de la question" class="question-image">
+                    </div>
+                    <h3 id="questionText">✈️ Have you ever traveled abroad?</h3>
+                    <div class="answer-options">
+                        <label class="option">
+                            <input type="radio" name="currentAnswer" value="yes">
+                            <span class="option-text">Yes</span>
+                        </label>
+                        <label class="option">
+                            <input type="radio" name="currentAnswer" value="no">
+                            <span class="option-text">No</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Controls -->
+            <div class="navigation-controls">
+                <button id="prevBtn" class="nav-btn prev-btn" style="display: none;">← Previous</button>
+                <button id="nextBtn" class="nav-btn next-btn" style="display: none;">Next →</button>
+                <button id="finishBtn" class="nav-btn finish-btn" style="display: none;">🚀 See my results!</button>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results" class="results-section" style="display: none;">
+                <h2>🎉 Your Results!</h2>
+                <div id="personalityResult" class="personality-result"></div>
+                <div id="statsContainer" class="stats-container"></div>
+                <div class="action-buttons">
+                    <button id="exportBtn" class="action-btn">📊 Export Results</button>
+                    <button id="shareBtn" class="action-btn">🔗 Share</button>
+                    <button id="newSurveyBtn" class="action-btn">🔄 New Survey</button>
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌍 EF Travel - Home</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="main-title">🌍 EF Travel</h1>
+            <p class="subtitle">Discover what type of traveler you are! 😄✈️</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="home-container">
+            <!-- Welcome Section -->
+            <section class="welcome-section">
+                <div class="welcome-card">
+                    <h2>🎯 Welcome to EF Travel!</h2>
+                    <p>Answer our fun questions about your travel adventures and discover your unique traveler profile!</p>
+                    <div class="features">
+                        <div class="feature">
+                            <span class="feature-icon">✈️</span>
+                            <span>10 fun questions</span>
+                        </div>
+                        <div class="feature">
+                            <span class="feature-icon">🎮</span>
+                            <span>Multiplayer mode</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Game Mode Selection -->
+            <section class="game-modes">
+                <h2>🎮 Start the Survey</h2>
+                     <!-- Multiplayer Mode -->
+                <div class="game-mode-card multiplayer-mode">
+                    <div class="mode-icon">👥</div>
+                    <h3>Multiplayer Mode</h3>
+                    <p>Create a game or join your friends to compare your results</p>
+                    <div class="multiplayer-options">
+                        <button id="createGameBtn" class="mode-btn create-btn">🎯 Create Game</button>
+                        <button id="joinGameBtn" class="mode-btn join-btn">🔗 Join Game</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Game Code Section (hidden by default) -->
+            <section id="gameCodeSection" class="game-code-section" style="display: none;">
+                <div class="game-code-card">
+                    <h3>🎯 Game Created!</h3>
+                    <p>Share this code with your friends:</p>
+                    <div class="code-display">
+                        <span id="gameCodeValue" class="code-value"></span>
+                        <button id="copyCodeBtn" class="copy-btn">📋 Copy</button>
+                    </div>
+                    <p class="code-instruction">Once your friends have joined, click "Start Quiz"</p>
+                    <button id="startQuizBtn" class="start-quiz-btn">🚀 Start Quiz</button>
+                </div>
+            </section>
+
+            <!-- Join Game Section (hidden by default) -->
+            <section id="joinGameSection" class="join-game-section" style="display: none;">
+                <div class="join-game-card">
+                    <h3>🔗 Join Game</h3>
+                    <p>Enter the code of the game you want to join:</p>
+                    <div class="join-form">
+                        <input type="text" id="gameCodeInput" placeholder="Enter code (6 characters)" maxlength="6">
+                        <button id="confirmJoinBtn" class="join-confirm-btn">Join</button>
+                    </div>
+                    <div id="joinStatus" class="join-status"></div>
+                </div>
+            </section>
+
+            <!-- Current Game Info -->
+            <section id="currentGameInfo" class="current-game-info" style="display: none;">
+                <div class="current-game-card">
+                    <h3>🎮 Game in Progress</h3>
+                    <p>Game code: <strong id="currentGameCode"></strong></p>
+                    <div class="game-actions">
+                        <button id="continueGameBtn" class="continue-btn">Continue Quiz</button>
+                        <button id="leaveGameBtn" class="leave-btn">Leave Game</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>🌍 EF Travel - Discover your traveler profile!</p>
+        </footer>
+    </div>
+
+    <script src="home.js"></script>
+</body>
+</html>
