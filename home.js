@@ -149,16 +149,17 @@ function createGame() {
         gameModes.style.display = 'none';
     }
     
-    // Utiliser Socket.io si disponible
-    if (window.socketManager && window.socketManager.isConnected) {
-        console.log('Création de partie via Socket.io');
-        window.socketManager.joinSession(gameCode, `Host_${Date.now()}`);
-    } else {
-        console.log('Création de partie via localStorage (fallback)');
-        appState.currentGame.playerCount = 1;
-        appState.currentGame.startTime = new Date().toISOString();
-        saveSessionData(gameCode, appState.currentGame);
-    }
+        // Utiliser Socket.io si disponible
+        if (window.socketManager && window.socketManager.isConnected) {
+            console.log('🎮 Création de partie via Socket.io');
+            window.socketManager.joinSession(gameCode, `Host_${Date.now()}`);
+        } else {
+            console.log('💾 Création de partie via localStorage (fallback)');
+            console.log('⚠️ Socket.io non connecté - utilisation du mode fallback');
+            appState.currentGame.playerCount = 1;
+            appState.currentGame.startTime = new Date().toISOString();
+            saveSessionData(gameCode, appState.currentGame);
+        }
     
     saveGameState();
     showNotification(`🎯 Game created! Code: ${gameCode}`);
@@ -187,30 +188,9 @@ function joinGame() {
         return;
     }
     
-    // Utiliser Socket.io si disponible
-    if (window.socketManager && window.socketManager.isConnected) {
-        console.log('Rejoindre partie via Socket.io');
-        appState.isMultiplayer = true;
-        appState.gameCode = gameCode;
-        appState.currentGame = {
-            type: 'multiplayer',
-            code: gameCode,
-            joinTime: new Date().toISOString(),
-            isJoining: true
-        };
-        
-        window.socketManager.joinSession(gameCode, `Player_${Date.now()}`);
-        
-        saveGameState();
-        showJoinStatus(`✅ Game joined successfully! Connecting to server...`, 'success');
-        
-        setTimeout(() => {
-            redirectToQuiz();
-        }, 1500);
-    } else {
-        // Fallback vers localStorage
-        console.log('Rejoindre partie via localStorage (fallback)');
-        if (validateGameCode(gameCode)) {
+        // Utiliser Socket.io si disponible
+        if (window.socketManager && window.socketManager.isConnected) {
+            console.log('🎮 Rejoindre partie via Socket.io');
             appState.isMultiplayer = true;
             appState.gameCode = gameCode;
             appState.currentGame = {
@@ -220,26 +200,49 @@ function joinGame() {
                 isJoining: true
             };
             
-            const sessionData = getSessionData(gameCode);
-            if (sessionData) {
-                appState.currentGame.playerCount = sessionData.playerCount;
-                appState.currentGame.startTime = sessionData.startTime;
-            } else {
-                appState.currentGame.playerCount = 1;
-                appState.currentGame.startTime = new Date().toISOString();
-            }
+            window.socketManager.joinSession(gameCode, `Player_${Date.now()}`);
             
             saveGameState();
-            saveSessionData(gameCode, appState.currentGame);
-            showJoinStatus(`✅ Game joined successfully! ${appState.currentGame.playerCount} player(s) in session.`, 'success');
+            showJoinStatus(`✅ Game joined successfully! Connecting to server...`, 'success');
             
             setTimeout(() => {
                 redirectToQuiz();
             }, 1500);
         } else {
-            showJoinStatus('❌ Game code not found! Check the code.', 'error');
+            // Fallback vers localStorage
+            console.log('💾 Rejoindre partie via localStorage (fallback)');
+            console.log('⚠️ Socket.io non connecté - utilisation du mode fallback');
+            
+            if (validateGameCode(gameCode)) {
+                appState.isMultiplayer = true;
+                appState.gameCode = gameCode;
+                appState.currentGame = {
+                    type: 'multiplayer',
+                    code: gameCode,
+                    joinTime: new Date().toISOString(),
+                    isJoining: true
+                };
+                
+                const sessionData = getSessionData(gameCode);
+                if (sessionData) {
+                    appState.currentGame.playerCount = sessionData.playerCount;
+                    appState.currentGame.startTime = sessionData.startTime;
+                } else {
+                    appState.currentGame.playerCount = 1;
+                    appState.currentGame.startTime = new Date().toISOString();
+                }
+                
+                saveGameState();
+                saveSessionData(gameCode, appState.currentGame);
+                showJoinStatus(`✅ Game joined successfully! ${appState.currentGame.playerCount} player(s) in session.`, 'success');
+                
+                setTimeout(() => {
+                    redirectToQuiz();
+                }, 1500);
+            } else {
+                showJoinStatus('❌ Game code not found! Check the code.', 'error');
+            }
         }
-    }
 }
 
 // Continuer une partie existante
@@ -449,4 +452,15 @@ function getSessionData(gameCode) {
 function debugAppState() {
     console.log('État de l\'application:', appState);
     console.log('Données sauvegardées:', localStorage.getItem('efTravelCurrentGame'));
+}
+
+// Fonction pour reconnecter Socket.io
+function reconnectSocket() {
+    console.log('🔄 Tentative de reconnexion Socket.io...');
+    if (window.socketManager) {
+        window.socketManager.forceReconnect();
+    } else {
+        console.error('❌ SocketManager non disponible');
+        showNotification('❌ Erreur: SocketManager non disponible', 'error');
+    }
 }

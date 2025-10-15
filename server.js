@@ -26,7 +26,7 @@ io.on('connection', (socket) => {
     socket.on('join-session', (data) => {
         const { gameCode, playerName } = data;
         
-        console.log(`Joueur ${socket.id} rejoint la session ${gameCode}`);
+        console.log(`🎮 Joueur ${socket.id} rejoint la session ${gameCode} en tant que ${playerName}`);
         
         // Initialiser la session si elle n'existe pas
         if (!sessions.has(gameCode)) {
@@ -36,6 +36,7 @@ io.on('connection', (socket) => {
                 startTime: new Date().toISOString(),
                 isActive: true
             });
+            console.log(`🆕 Nouvelle session créée: ${gameCode}`);
         }
         
         const session = sessions.get(gameCode);
@@ -55,6 +56,8 @@ io.on('connection', (socket) => {
         // Rejoindre la room Socket.io
         socket.join(gameCode);
         
+        console.log(`👥 Session ${gameCode}: ${session.players.size} joueur(s) connecté(s)`);
+        
         // Notifier tous les joueurs de la session
         io.to(gameCode).emit('player-joined', {
             playerId: socket.id,
@@ -63,11 +66,24 @@ io.on('connection', (socket) => {
             players: Array.from(session.players.values()).map(p => ({
                 id: p.socketId,
                 name: p.playerName,
-                isCompleted: p.isCompleted
+                isCompleted: p.isCompleted,
+                joinedAt: p.joinedAt
             }))
         });
         
-        console.log(`Session ${gameCode}: ${session.players.size} joueur(s)`);
+        // Envoyer les statistiques actuelles au nouveau joueur
+        socket.emit('session-stats', {
+            gameCode,
+            totalPlayers: session.players.size,
+            completedPlayers: Array.from(session.players.values()).filter(p => p.isCompleted).length,
+            isActive: session.isActive,
+            players: Array.from(session.players.values()).map(p => ({
+                id: p.socketId,
+                name: p.playerName,
+                isCompleted: p.isCompleted,
+                joinedAt: p.joinedAt
+            }))
+        });
     });
 
     // Sauvegarder les réponses d'un joueur
@@ -158,6 +174,40 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Quitter une session
+    socket.on('leave-session', (data) => {
+        const { gameCode } = data;
+        const session = sessions.get(gameCode);
+        
+        if (session && session.players.has(socket.id)) {
+            const player = session.players.get(socket.id);
+            session.players.delete(socket.id);
+            players.delete(socket.id);
+            
+            console.log(`👋 Joueur ${socket.id} (${player.playerName}) a quitté la session ${gameCode}`);
+            
+            // Notifier les autres joueurs
+            socket.to(gameCode).emit('player-left', {
+                playerId: socket.id,
+                playerName: player.playerName,
+                totalPlayers: session.players.size,
+                players: Array.from(session.players.values()).map(p => ({
+                    id: p.socketId,
+                    name: p.playerName,
+                    isCompleted: p.isCompleted,
+                    joinedAt: p.joinedAt
+                }))
+            });
+            
+            // Nettoyer la session si elle est vide
+            if (session.players.size === 0) {
+                sessions.delete(gameCode);
+                console.log(`🗑️ Session ${gameCode} supprimée (vide)`);
+            }
+        }
+    });
+
+
     // Gestion de la déconnexion
     socket.on('disconnect', () => {
         const player = players.get(socket.id);
@@ -170,24 +220,28 @@ io.on('connection', (socket) => {
                 session.players.delete(socket.id);
                 players.delete(socket.id);
                 
-                console.log(`Joueur ${socket.id} déconnecté de la session ${gameCode}`);
+                console.log(`👋 Joueur ${socket.id} (${player.playerName}) déconnecté de la session ${gameCode}`);
+                console.log(`👥 Session ${gameCode}: ${session.players.size} joueur(s) restant(s)`);
                 
-                // Notifier les autres joueurs
-                socket.to(gameCode).emit('player-left', {
-                    playerId: socket.id,
-                    playerName: player.playerName,
-                    totalPlayers: session.players.size,
-                    players: Array.from(session.players.values()).map(p => ({
-                        id: p.socketId,
-                        name: p.playerName,
-                        isCompleted: p.isCompleted
-                    }))
-                });
+                // Notifier les autres joueurs seulement s'il y en a d'autres
+                if (session.players.size > 0) {
+                    socket.to(gameCode).emit('player-left', {
+                        playerId: socket.id,
+                        playerName: player.playerName,
+                        totalPlayers: session.players.size,
+                        players: Array.from(session.players.values()).map(p => ({
+                            id: p.socketId,
+                            name: p.playerName,
+                            isCompleted: p.isCompleted,
+                            joinedAt: p.joinedAt
+                        }))
+                    });
+                }
                 
                 // Nettoyer la session si elle est vide
                 if (session.players.size === 0) {
                     sessions.delete(gameCode);
-                    console.log(`Session ${gameCode} supprimée (vide)`);
+                    console.log(`🗑️ Session ${gameCode} supprimée (vide)`);
                 }
             }
         }
@@ -250,9 +304,6 @@ app.get('/quiz', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.get('/test', (req, res) => {
-    res.sendFile(path.join(__dirname, 'test-connection.html'));
-});
 
 // Route API pour obtenir les statistiques d'une session
 app.get('/api/session/:gameCode', (req, res) => {

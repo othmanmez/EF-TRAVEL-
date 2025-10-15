@@ -67,6 +67,11 @@ document.addEventListener('DOMContentLoaded', function() {
         updatePlayerCount();
         updateWaitingStats();
         checkRealPlayers();
+        
+        // Demander les statistiques de session via Socket.io si connecté
+        if (window.socketManager && window.socketManager.isConnected && surveyState.isMultiplayer && surveyState.gameCode) {
+            window.socketManager.getSessionStats();
+        }
     }, 3000);
 });
 
@@ -495,12 +500,14 @@ function savePlayerCompletion() {
             
             // Utiliser Socket.io si disponible
             if (window.socketManager && window.socketManager.isConnected) {
-                console.log('Sauvegarde via Socket.io');
+                console.log('💾 Sauvegarde via Socket.io');
                 window.socketManager.saveAnswers(surveyState.answers);
                 window.socketManager.playerCompleted(surveyState.answers);
             } else {
                 // Fallback vers localStorage
-                console.log('Sauvegarde via localStorage (fallback)');
+                console.log('💾 Sauvegarde via localStorage (fallback)');
+                console.log('⚠️ Socket.io non connecté - utilisation du mode fallback');
+                
                 const playerId = Date.now() + Math.random() * 1000;
                 
                 const playerKey = `efTravelPlayer_${gameCode}_${playerId}`;
@@ -1022,6 +1029,18 @@ function loadSavedData() {
                 isMultiplayer: surveyState.isMultiplayer,
                 gameCode: surveyState.gameCode
             });
+            
+            // Se connecter automatiquement à Socket.io si en mode multijoueur
+            if (surveyState.isMultiplayer && surveyState.gameCode && window.socketManager) {
+                console.log('🔄 Reconnexion automatique à la session multijoueur');
+                setTimeout(() => {
+                    if (window.socketManager.isConnected) {
+                        window.socketManager.joinSession(surveyState.gameCode, `Player_${Date.now()}`);
+                    } else {
+                        console.log('⏳ Attente de la connexion Socket.io...');
+                    }
+                }, 1000);
+            }
         } catch (error) {
             console.error('Erreur lors du chargement des données de jeu:', error);
         }

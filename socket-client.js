@@ -15,7 +15,15 @@ class SocketManager {
             return false;
         }
 
-        this.socket = io();
+        // Se connecter au serveur Socket.io
+        this.socket = io('http://localhost:3000', {
+            transports: ['websocket', 'polling'],
+            timeout: 20000,
+            forceNew: true,
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
         
         // Événements de connexion
         this.socket.on('connect', () => {
@@ -28,6 +36,26 @@ class SocketManager {
             console.log('❌ Déconnecté du serveur Socket.io');
             this.isConnected = false;
             this.updateConnectionStatus(false);
+        });
+
+        this.socket.on('connect_error', (error) => {
+            console.error('❌ Erreur de connexion Socket.io:', error);
+            this.isConnected = false;
+            this.updateConnectionStatus(false);
+        });
+
+        this.socket.on('reconnect', (attemptNumber) => {
+            console.log(`🔄 Reconnexion réussie après ${attemptNumber} tentatives`);
+            this.isConnected = true;
+            this.updateConnectionStatus(true);
+        });
+
+        this.socket.on('reconnect_attempt', (attemptNumber) => {
+            console.log(`🔄 Tentative de reconnexion ${attemptNumber}...`);
+        });
+
+        this.socket.on('reconnect_error', (error) => {
+            console.error('❌ Erreur de reconnexion:', error);
         });
 
         // Événements de session
@@ -67,19 +95,29 @@ class SocketManager {
     // Rejoindre une session
     joinSession(gameCode, playerName = null) {
         if (!this.isConnected) {
-            console.error('Pas connecté au serveur');
+            console.error('Pas connecté au serveur - tentative de reconnexion...');
+            this.init();
+            // Attendre un peu pour la connexion
+            setTimeout(() => {
+                if (this.isConnected) {
+                    this.joinSession(gameCode, playerName);
+                } else {
+                    console.error('Impossible de se connecter au serveur');
+                }
+            }, 1000);
             return false;
         }
 
         this.currentGameCode = gameCode;
         this.playerName = playerName || `Player_${Date.now()}`;
 
+        console.log(`🎮 Rejoindre la session ${gameCode} en tant que ${this.playerName}`);
+        
         this.socket.emit('join-session', {
             gameCode: gameCode,
             playerName: this.playerName
         });
 
-        console.log(`🎮 Rejoindre la session ${gameCode} en tant que ${this.playerName}`);
         return true;
     }
 
@@ -132,6 +170,8 @@ class SocketManager {
 
     // Gestionnaires d'événements
     handlePlayerJoined(data) {
+        console.log('👥 Nouveau joueur rejoint:', data);
+        
         // Mettre à jour l'affichage du nombre de joueurs
         this.updatePlayerCount(data.totalPlayers);
         
@@ -142,6 +182,11 @@ class SocketManager {
 
         // Mettre à jour la liste des joueurs
         this.updatePlayersList(data.players);
+        
+        // Mettre à jour les statistiques d'attente si on est en mode multijoueur
+        if (typeof updateWaitingStats === 'function') {
+            updateWaitingStats();
+        }
     }
 
     handlePlayerLeft(data) {
@@ -185,13 +230,45 @@ class SocketManager {
         this.updateSessionStats(data);
     }
 
+    // Forcer la reconnexion
+    forceReconnect() {
+        console.log('🔄 Forçage de la reconnexion...');
+        if (this.socket) {
+            this.socket.disconnect();
+            setTimeout(() => {
+                this.socket.connect();
+            }, 1000);
+        } else {
+            this.init();
+        }
+    }
+
     // Méthodes d'affichage
     updateConnectionStatus(isConnected) {
         const statusElement = document.getElementById('connectionStatus');
         if (statusElement) {
-            statusElement.textContent = isConnected ? '🟢 Connecté' : '🔴 Déconnecté';
-            statusElement.className = isConnected ? 'connected' : 'disconnected';
+            if (isConnected) {
+                statusElement.textContent = '🟢 Connecté';
+                statusElement.className = 'connection-status connected';
+            } else {
+                statusElement.textContent = '🔴 Déconnecté';
+                statusElement.className = 'connection-status disconnected';
+            }
         }
+        
+        // Mettre à jour aussi l'élément de statut dans home.html
+        const homeStatusElement = document.querySelector('#connectionStatus');
+        if (homeStatusElement) {
+            if (isConnected) {
+                homeStatusElement.textContent = '🟢 Connecté';
+                homeStatusElement.className = 'connection-status connected';
+            } else {
+                homeStatusElement.textContent = '🔴 Déconnecté';
+                homeStatusElement.className = 'connection-status disconnected';
+            }
+        }
+        
+        console.log(`📡 Statut de connexion mis à jour: ${isConnected ? 'Connecté' : 'Déconnecté'}`);
     }
 
     updatePlayerCount(count) {
