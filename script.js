@@ -499,14 +499,13 @@ function savePlayerCompletion() {
             const gameCode = gameData.gameCode;
             
             // Utiliser Socket.io si disponible
-            if (window.socketManager && window.socketManager.isConnected) {
+            if (window.socketManager && window.socketManager.isConnected && typeof window.socketManager.saveAnswers === 'function') {
                 console.log('💾 Sauvegarde via Socket.io');
                 window.socketManager.saveAnswers(surveyState.answers);
                 window.socketManager.playerCompleted(surveyState.answers);
             } else {
                 // Fallback vers localStorage
                 console.log('💾 Sauvegarde via localStorage (fallback)');
-                console.log('⚠️ Socket.io non connecté - utilisation du mode fallback');
                 
                 const playerId = Date.now() + Math.random() * 1000;
                 
@@ -1031,13 +1030,13 @@ function loadSavedData() {
             });
             
             // Se connecter automatiquement à Socket.io si en mode multijoueur
-            if (surveyState.isMultiplayer && surveyState.gameCode && window.socketManager) {
+            if (surveyState.isMultiplayer && surveyState.gameCode && window.socketManager && typeof window.socketManager.joinSession === 'function') {
                 console.log('🔄 Reconnexion automatique à la session multijoueur');
                 setTimeout(() => {
                     if (window.socketManager.isConnected) {
                         window.socketManager.joinSession(surveyState.gameCode, `Player_${Date.now()}`);
                     } else {
-                        console.log('⏳ Attente de la connexion Socket.io...');
+                        console.log('⏳ Mode fallback localStorage - Socket.io non connecté');
                     }
                 }, 1000);
             }

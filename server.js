@@ -3,11 +3,15 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const cors = require('cors');
-const config = require('./config');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, config.socket);
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
 // Middleware
 app.use(cors());
@@ -305,6 +309,7 @@ app.get('/quiz', (req, res) => {
 });
 
 
+
 // Route API pour obtenir les statistiques d'une session
 app.get('/api/session/:gameCode', (req, res) => {
     const { gameCode } = req.params;
@@ -324,9 +329,10 @@ app.get('/api/session/:gameCode', (req, res) => {
     }
 });
 
-server.listen(config.port, () => {
-    console.log(`🚀 Serveur EF Travel démarré sur le port ${config.port}`);
-    console.log(`📱 Accédez à l'application: http://localhost:${config.port}`);
-    console.log(`🌍 Environnement: ${config.environment}`);
-    console.log(`⚡ Socket.io configuré avec CORS: ${config.socket.cors.origin}`);
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`🚀 Serveur EF Travel démarré sur le port ${PORT}`);
+    console.log(`📱 Accédez à l'application: http://localhost:${PORT}`);
+    console.log(`🌍 Environnement: development`);
+    console.log(`⚡ Socket.io configuré avec CORS: *`);
 });

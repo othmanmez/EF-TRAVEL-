@@ -15,47 +15,37 @@ class SocketManager {
             return false;
         }
 
-        // Se connecter au serveur Socket.io
+        // Se connecter au serveur Socket.io automatiquement
         this.socket = io('http://localhost:3000', {
             transports: ['websocket', 'polling'],
-            timeout: 20000,
-            forceNew: true,
+            timeout: 10000,
             reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 2000,
+            reconnectionDelayMax: 10000,
+            maxReconnectionAttempts: Infinity,
+            autoConnect: true
         });
         
-        // Événements de connexion
+        // Événements de connexion automatique
         this.socket.on('connect', () => {
-            console.log('🔌 Connecté au serveur Socket.io');
             this.isConnected = true;
             this.updateConnectionStatus(true);
         });
 
         this.socket.on('disconnect', () => {
-            console.log('❌ Déconnecté du serveur Socket.io');
             this.isConnected = false;
             this.updateConnectionStatus(false);
         });
 
         this.socket.on('connect_error', (error) => {
-            console.error('❌ Erreur de connexion Socket.io:', error);
             this.isConnected = false;
             this.updateConnectionStatus(false);
         });
 
         this.socket.on('reconnect', (attemptNumber) => {
-            console.log(`🔄 Reconnexion réussie après ${attemptNumber} tentatives`);
             this.isConnected = true;
             this.updateConnectionStatus(true);
-        });
-
-        this.socket.on('reconnect_attempt', (attemptNumber) => {
-            console.log(`🔄 Tentative de reconnexion ${attemptNumber}...`);
-        });
-
-        this.socket.on('reconnect_error', (error) => {
-            console.error('❌ Erreur de reconnexion:', error);
         });
 
         // Événements de session
@@ -94,30 +84,31 @@ class SocketManager {
 
     // Rejoindre une session
     joinSession(gameCode, playerName = null) {
-        if (!this.isConnected) {
-            console.error('Pas connecté au serveur - tentative de reconnexion...');
-            this.init();
-            // Attendre un peu pour la connexion
-            setTimeout(() => {
-                if (this.isConnected) {
-                    this.joinSession(gameCode, playerName);
-                } else {
-                    console.error('Impossible de se connecter au serveur');
-                }
-            }, 1000);
-            return false;
-        }
-
         this.currentGameCode = gameCode;
         this.playerName = playerName || `Player_${Date.now()}`;
 
-        console.log(`🎮 Rejoindre la session ${gameCode} en tant que ${this.playerName}`);
-        
-        this.socket.emit('join-session', {
-            gameCode: gameCode,
-            playerName: this.playerName
-        });
+        // Si connecté, rejoindre immédiatement
+        if (this.isConnected) {
+            this.socket.emit('join-session', {
+                gameCode: gameCode,
+                playerName: this.playerName
+            });
+            return true;
+        }
 
+        // Sinon, attendre la connexion automatique
+        const checkConnection = () => {
+            if (this.isConnected) {
+                this.socket.emit('join-session', {
+                    gameCode: gameCode,
+                    playerName: this.playerName
+                });
+            } else {
+                setTimeout(checkConnection, 500);
+            }
+        };
+        
+        checkConnection();
         return true;
     }
 
@@ -230,45 +221,11 @@ class SocketManager {
         this.updateSessionStats(data);
     }
 
-    // Forcer la reconnexion
-    forceReconnect() {
-        console.log('🔄 Forçage de la reconnexion...');
-        if (this.socket) {
-            this.socket.disconnect();
-            setTimeout(() => {
-                this.socket.connect();
-            }, 1000);
-        } else {
-            this.init();
-        }
-    }
 
     // Méthodes d'affichage
     updateConnectionStatus(isConnected) {
-        const statusElement = document.getElementById('connectionStatus');
-        if (statusElement) {
-            if (isConnected) {
-                statusElement.textContent = '🟢 Connecté';
-                statusElement.className = 'connection-status connected';
-            } else {
-                statusElement.textContent = '🔴 Déconnecté';
-                statusElement.className = 'connection-status disconnected';
-            }
-        }
-        
-        // Mettre à jour aussi l'élément de statut dans home.html
-        const homeStatusElement = document.querySelector('#connectionStatus');
-        if (homeStatusElement) {
-            if (isConnected) {
-                homeStatusElement.textContent = '🟢 Connecté';
-                homeStatusElement.className = 'connection-status connected';
-            } else {
-                homeStatusElement.textContent = '🔴 Déconnecté';
-                homeStatusElement.className = 'connection-status disconnected';
-            }
-        }
-        
-        console.log(`📡 Statut de connexion mis à jour: ${isConnected ? 'Connecté' : 'Déconnecté'}`);
+        // Connexion automatique en arrière-plan - pas d'affichage visible
+        console.log(`📡 Connexion Socket.io: ${isConnected ? 'Connecté' : 'Déconnecté'}`);
     }
 
     updatePlayerCount(count) {
@@ -326,13 +283,27 @@ class SocketManager {
 }
 
 // Instance globale du gestionnaire Socket
-window.socketManager = new SocketManager();
+let socketManager = null;
 
 // Initialiser automatiquement la connexion
 document.addEventListener('DOMContentLoaded', () => {
-    if (window.socketManager.init()) {
-        console.log('✅ Socket Manager initialisé');
-    } else {
-        console.error('❌ Échec de l\'initialisation du Socket Manager');
+    try {
+        socketManager = new SocketManager();
+        window.socketManager = socketManager;
+        
+        if (socketManager.init()) {
+            console.log('✅ Socket Manager initialisé');
+        } else {
+            console.error('❌ Échec de l\'initialisation du Socket Manager');
+        }
+    } catch (error) {
+        console.error('❌ Erreur lors de l\'initialisation du Socket Manager:', error);
+        // Créer une instance de fallback
+        window.socketManager = {
+            isConnected: false,
+            joinSession: () => false,
+            saveAnswers: () => false,
+            playerCompleted: () => false
+        };
     }
 });

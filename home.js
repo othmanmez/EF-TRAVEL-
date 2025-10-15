@@ -150,12 +150,11 @@ function createGame() {
     }
     
         // Utiliser Socket.io si disponible
-        if (window.socketManager && window.socketManager.isConnected) {
+        if (window.socketManager && window.socketManager.isConnected && typeof window.socketManager.joinSession === 'function') {
             console.log('🎮 Création de partie via Socket.io');
             window.socketManager.joinSession(gameCode, `Host_${Date.now()}`);
         } else {
             console.log('💾 Création de partie via localStorage (fallback)');
-            console.log('⚠️ Socket.io non connecté - utilisation du mode fallback');
             appState.currentGame.playerCount = 1;
             appState.currentGame.startTime = new Date().toISOString();
             saveSessionData(gameCode, appState.currentGame);
@@ -189,7 +188,7 @@ function joinGame() {
     }
     
         // Utiliser Socket.io si disponible
-        if (window.socketManager && window.socketManager.isConnected) {
+        if (window.socketManager && window.socketManager.isConnected && typeof window.socketManager.joinSession === 'function') {
             console.log('🎮 Rejoindre partie via Socket.io');
             appState.isMultiplayer = true;
             appState.gameCode = gameCode;
@@ -211,7 +210,6 @@ function joinGame() {
         } else {
             // Fallback vers localStorage
             console.log('💾 Rejoindre partie via localStorage (fallback)');
-            console.log('⚠️ Socket.io non connecté - utilisation du mode fallback');
             
             if (validateGameCode(gameCode)) {
                 appState.isMultiplayer = true;
@@ -454,13 +452,3 @@ function debugAppState() {
     console.log('Données sauvegardées:', localStorage.getItem('efTravelCurrentGame'));
 }
 
-// Fonction pour reconnecter Socket.io
-function reconnectSocket() {
-    console.log('🔄 Tentative de reconnexion Socket.io...');
-    if (window.socketManager) {
-        window.socketManager.forceReconnect();
-    } else {
-        console.error('❌ SocketManager non disponible');
-        showNotification('❌ Erreur: SocketManager non disponible', 'error');
-    }
-}
