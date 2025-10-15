@@ -63,7 +63,10 @@ document.addEventListener('DOMContentLoaded', function() {
     displayGameInfo();
     
     // Mettre à jour le nombre de joueurs toutes les 5 secondes en mode multijoueur
-    setInterval(updatePlayerCount, 5000);
+    setInterval(() => {
+        updatePlayerCount();
+        updateWaitingStats();
+    }, 5000);
 });
 
 // Initialisation du sondage
@@ -224,13 +227,16 @@ function finishSurvey() {
     
     surveyState.isCompleted = true;
     
-    // If it's a multiplayer session, simulate collective statistics
+    // En mode multijoueur, attendre que tous les joueurs aient terminé
     if (surveyState.isMultiplayer) {
-        simulateCollectiveStats();
+        showWaitingForOtherPlayers();
+        savePlayerCompletion();
+        checkAllPlayersCompleted();
+    } else {
+        // Mode solo - afficher directement les résultats
+        calculateAndDisplayResults();
+        saveData();
     }
-    
-    calculateAndDisplayResults();
-    saveData();
 }
 
 // Simulation des statistiques collectives (en attendant un vrai serveur)
@@ -301,6 +307,127 @@ function updatePlayerCount() {
             }
         } catch (error) {
             console.error('Erreur lors de la mise à jour du nombre de joueurs:', error);
+        }
+    }
+}
+
+// Afficher l'écran d'attente pour les autres joueurs
+function showWaitingForOtherPlayers() {
+    const questionContainer = document.getElementById('questionContainer');
+    const navigationControls = document.querySelector('.navigation-controls');
+    const results = document.getElementById('results');
+    
+    // Masquer les éléments du quiz
+    questionContainer.style.display = 'none';
+    navigationControls.style.display = 'none';
+    
+    // Afficher l'écran d'attente
+    results.style.display = 'block';
+    results.innerHTML = `
+        <div class="waiting-screen">
+            <h2>⏳ Waiting for other players...</h2>
+            <div class="waiting-animation">
+                <div class="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+            <p>You have completed the survey! 🎉</p>
+            <p>Waiting for <span id="remainingPlayers">0</span> other player(s) to finish...</p>
+            <div class="waiting-stats">
+                <p>Players completed: <span id="completedPlayers">1</span>/<span id="totalPlayers">1</span></p>
+            </div>
+        </div>
+    `;
+    
+    // Mettre à jour les statistiques d'attente
+    updateWaitingStats();
+}
+
+// Sauvegarder la completion du joueur
+function savePlayerCompletion() {
+    const currentGame = localStorage.getItem('efTravelCurrentGame');
+    if (currentGame) {
+        try {
+            const gameData = JSON.parse(currentGame);
+            const gameCode = gameData.gameCode;
+            
+            // Sauvegarder les réponses du joueur
+            const playerKey = `efTravelPlayer_${gameCode}_${Date.now()}`;
+            localStorage.setItem(playerKey, JSON.stringify({
+                gameCode: gameCode,
+                answers: surveyState.answers,
+                completedAt: new Date().toISOString(),
+                playerId: Date.now()
+            }));
+            
+            // Mettre à jour les données de session
+            const sessionData = getSessionDataFromStorage(gameCode);
+            if (sessionData) {
+                sessionData.completedPlayers = (sessionData.completedPlayers || 0) + 1;
+                sessionData.lastCompletion = new Date().toISOString();
+                localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
+            }
+        } catch (error) {
+            console.error('Erreur lors de la sauvegarde de la completion:', error);
+        }
+    }
+}
+
+// Vérifier si tous les joueurs ont terminé
+function checkAllPlayersCompleted() {
+    const currentGame = localStorage.getItem('efTravelCurrentGame');
+    if (currentGame) {
+        try {
+            const gameData = JSON.parse(currentGame);
+            const gameCode = gameData.gameCode;
+            const sessionData = getSessionDataFromStorage(gameCode);
+            
+            if (sessionData) {
+                const totalPlayers = sessionData.playerCount || 1;
+                const completedPlayers = sessionData.completedPlayers || 1;
+                
+                if (completedPlayers >= totalPlayers) {
+                    // Tous les joueurs ont terminé, afficher les résultats
+                    simulateCollectiveStats();
+                    calculateAndDisplayResults();
+                    saveData();
+                } else {
+                    // Continuer à attendre
+                    setTimeout(checkAllPlayersCompleted, 3000);
+                }
+            }
+        } catch (error) {
+            console.error('Erreur lors de la vérification des joueurs:', error);
+        }
+    }
+}
+
+// Mettre à jour les statistiques d'attente
+function updateWaitingStats() {
+    const currentGame = localStorage.getItem('efTravelCurrentGame');
+    if (currentGame) {
+        try {
+            const gameData = JSON.parse(currentGame);
+            const gameCode = gameData.gameCode;
+            const sessionData = getSessionDataFromStorage(gameCode);
+            
+            if (sessionData) {
+                const totalPlayers = sessionData.playerCount || 1;
+                const completedPlayers = sessionData.completedPlayers || 1;
+                const remainingPlayers = totalPlayers - completedPlayers;
+                
+                const remainingPlayersEl = document.getElementById('remainingPlayers');
+                const completedPlayersEl = document.getElementById('completedPlayers');
+                const totalPlayersEl = document.getElementById('totalPlayers');
+                
+                if (remainingPlayersEl) remainingPlayersEl.textContent = remainingPlayers;
+                if (completedPlayersEl) completedPlayersEl.textContent = completedPlayers;
+                if (totalPlayersEl) totalPlayersEl.textContent = totalPlayers;
+            }
+        } catch (error) {
+            console.error('Erreur lors de la mise à jour des statistiques d\'attente:', error);
         }
     }
 }
