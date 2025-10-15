@@ -62,12 +62,12 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSavedData();
     displayGameInfo();
     
-    // Mettre à jour le nombre de joueurs toutes les 5 secondes en mode multijoueur
+    // Mettre à jour le nombre de joueurs toutes les 3 secondes en mode multijoueur
     setInterval(() => {
         updatePlayerCount();
         updateWaitingStats();
         checkRealPlayers();
-    }, 5000);
+    }, 3000);
 });
 
 // Initialisation du sondage
@@ -119,7 +119,14 @@ function handleAnswerChange(event) {
         if (surveyState.currentQuestionIndex < surveyState.totalQuestions - 1) {
             nextQuestion();
         } else {
-            showFinishButton();
+            // Dernière question - gérer différemment selon le mode
+            if (surveyState.isMultiplayer) {
+                // En mode multijoueur, terminer directement le quiz
+                finishSurvey();
+            } else {
+                // En mode solo, afficher le bouton de fin
+                showFinishButton();
+            }
         }
     }, 500);
 }
@@ -235,9 +242,55 @@ function finishSurvey() {
     
     // En mode multijoueur, attendre que tous les joueurs aient terminé
     if (surveyState.isMultiplayer) {
-        showWaitingForOtherPlayers();
+        console.log('Mode multijoueur détecté - gestion de l\'attente');
         savePlayerCompletion();
-        checkAllPlayersCompleted();
+        
+        // Vérifier immédiatement si tous les joueurs ont terminé
+        const currentGame = localStorage.getItem('efTravelCurrentGame');
+        if (currentGame) {
+            try {
+                const gameData = JSON.parse(currentGame);
+                const gameCode = gameData.gameCode;
+                const sessionData = getSessionDataFromStorage(gameCode);
+                
+                if (sessionData) {
+                    const totalPlayers = sessionData.playerCount || 1;
+                    const completedPlayers = sessionData.completedPlayers || 1;
+                    
+                    console.log(`Joueurs terminés: ${completedPlayers}/${totalPlayers}`);
+                    
+                    if (completedPlayers >= totalPlayers) {
+                        // Tous les joueurs ont terminé, afficher les résultats
+                        console.log('Tous les joueurs ont terminé - affichage des résultats');
+                        calculateRealCollectiveStats();
+                        calculateAndDisplayResults();
+                        saveData();
+                    } else {
+                        // Pas tous les joueurs ont terminé, afficher l'écran d'attente
+                        console.log('Attente des autres joueurs');
+                        showWaitingForOtherPlayers();
+                        checkAllPlayersCompleted();
+                    }
+                } else {
+                    // Pas de données de session, afficher les résultats directement
+                    console.log('Pas de données de session - affichage direct des résultats');
+                    calculateRealCollectiveStats();
+                    calculateAndDisplayResults();
+                    saveData();
+                }
+            } catch (error) {
+                console.error('Erreur lors de la vérification des joueurs:', error);
+                // En cas d'erreur, afficher les résultats directement
+                calculateRealCollectiveStats();
+                calculateAndDisplayResults();
+                saveData();
+            }
+        } else {
+            // Pas de données de jeu, afficher les résultats directement
+            calculateRealCollectiveStats();
+            calculateAndDisplayResults();
+            saveData();
+        }
     } else {
         // Mode solo - afficher directement les résultats
         calculateAndDisplayResults();
@@ -330,6 +383,10 @@ function calculateRealCollectiveStats() {
 // Récupérer toutes les réponses des joueurs d'une session
 function getAllPlayerAnswers(gameCode) {
     const allAnswers = [];
+    const currentTime = Date.now();
+    const maxPlayerAge = 10 * 60 * 1000; // 10 minutes
+    
+    console.log(`Récupération des réponses pour la session: ${gameCode}`);
     
     // Parcourir tous les éléments du localStorage pour trouver les réponses des joueurs
     for (let i = 0; i < localStorage.length; i++) {
@@ -338,14 +395,24 @@ function getAllPlayerAnswers(gameCode) {
             try {
                 const playerData = JSON.parse(localStorage.getItem(key));
                 if (playerData.gameCode === gameCode && playerData.answers) {
-                    allAnswers.push(playerData);
+                    // Vérifier si le joueur est encore actif
+                    const playerTime = new Date(playerData.completedAt || Date.now()).getTime();
+                    const playerAge = currentTime - playerTime;
+                    
+                    if (playerAge < maxPlayerAge) {
+                        allAnswers.push(playerData);
+                        console.log(`Réponses trouvées pour le joueur ${playerData.playerId}:`, playerData.answers);
+                    } else {
+                        console.log(`Joueur expiré ignoré: ${playerData.playerId}`);
+                    }
                 }
             } catch (error) {
-                // Ignorer les erreurs de parsing
+                console.error('Erreur lors du parsing des réponses joueur:', error);
             }
         }
     }
     
+    console.log(`Nombre de réponses récupérées: ${allAnswers.length}`);
     return allAnswers;
 }
 
@@ -406,6 +473,10 @@ function showWaitingForOtherPlayers() {
             <p>Waiting for <span id="remainingPlayers">0</span> other player(s) to finish...</p>
             <div class="waiting-stats">
                 <p>Players completed: <span id="completedPlayers">1</span>/<span id="totalPlayers">1</span></p>
+                <p>Session: <strong>${surveyState.gameCode || 'Unknown'}</strong></p>
+            </div>
+            <div class="waiting-info">
+                <p>📊 Once everyone finishes, you'll see the collective results!</p>
             </div>
         </div>
     `;
@@ -421,26 +492,46 @@ function savePlayerCompletion() {
         try {
             const gameData = JSON.parse(currentGame);
             const gameCode = gameData.gameCode;
+            const playerId = Date.now() + Math.random() * 1000; // ID unique
+            
+            console.log(`Sauvegarde de la completion pour le joueur ${playerId} dans la session ${gameCode}`);
             
             // Sauvegarder les réponses du joueur
-            const playerKey = `efTravelPlayer_${gameCode}_${Date.now()}`;
-            localStorage.setItem(playerKey, JSON.stringify({
+            const playerKey = `efTravelPlayer_${gameCode}_${playerId}`;
+            const playerData = {
                 gameCode: gameCode,
                 answers: surveyState.answers,
                 completedAt: new Date().toISOString(),
-                playerId: Date.now()
-            }));
+                playerId: playerId,
+                sessionId: gameCode,
+                isActive: true
+            };
+            
+            localStorage.setItem(playerKey, JSON.stringify(playerData));
+            console.log('Données joueur sauvegardées:', playerData);
             
             // Mettre à jour les données de session
             const sessionData = getSessionDataFromStorage(gameCode);
             if (sessionData) {
                 sessionData.completedPlayers = (sessionData.completedPlayers || 0) + 1;
                 sessionData.lastCompletion = new Date().toISOString();
+                sessionData.activePlayers = sessionData.activePlayers || [];
+                sessionData.activePlayers.push({
+                    playerId: playerId,
+                    completedAt: new Date().toISOString(),
+                    isActive: true
+                });
+                
                 localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
+                console.log('Données de session mises à jour:', sessionData);
+            } else {
+                console.log('Aucune donnée de session trouvée pour', gameCode);
             }
         } catch (error) {
             console.error('Erreur lors de la sauvegarde de la completion:', error);
         }
+    } else {
+        console.log('Aucune donnée de jeu trouvée');
     }
 }
 
@@ -512,12 +603,25 @@ function checkRealPlayers() {
                 const sessionData = getSessionDataFromStorage(gameCode);
                 
                 if (sessionData) {
+                    // Nettoyer les anciens joueurs
+                    cleanOldPlayers(gameCode);
+                    
                     // Compter les vrais joueurs qui ont rejoint
                     const realPlayerCount = countRealPlayers(gameCode);
-                    if (realPlayerCount !== sessionData.playerCount) {
+                    const currentPlayerCount = sessionData.playerCount || 1;
+                    
+                    console.log(`Joueurs actuels: ${currentPlayerCount}, Joueurs réels: ${realPlayerCount}`);
+                    
+                    if (realPlayerCount !== currentPlayerCount) {
                         sessionData.playerCount = realPlayerCount;
+                        sessionData.lastUpdate = new Date().toISOString();
                         localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
                         updatePlayerCount();
+                        
+                        // Afficher une notification si le nombre de joueurs a changé
+                        if (realPlayerCount > currentPlayerCount) {
+                            showNotification(`👥 ${realPlayerCount - currentPlayerCount} new player(s) joined! Total: ${realPlayerCount}`);
+                        }
                     }
                 }
             }
@@ -527,9 +631,47 @@ function checkRealPlayers() {
     }
 }
 
+// Nettoyer les anciens joueurs
+function cleanOldPlayers(gameCode) {
+    const currentTime = Date.now();
+    const maxPlayerAge = 10 * 60 * 1000; // 10 minutes
+    let cleanedCount = 0;
+    
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('efTravelPlayer_')) {
+            try {
+                const playerData = JSON.parse(localStorage.getItem(key));
+                if (playerData.gameCode === gameCode) {
+                    const playerTime = new Date(playerData.completedAt || playerData.joinedAt || Date.now()).getTime();
+                    const playerAge = currentTime - playerTime;
+                    
+                    if (playerAge > maxPlayerAge) {
+                        localStorage.removeItem(key);
+                        cleanedCount++;
+                        console.log(`Joueur expiré supprimé: ${playerData.playerId}`);
+                    }
+                }
+            } catch (error) {
+                // Supprimer les données corrompues
+                localStorage.removeItem(key);
+                cleanedCount++;
+            }
+        }
+    }
+    
+    if (cleanedCount > 0) {
+        console.log(`${cleanedCount} anciens joueurs nettoyés`);
+    }
+}
+
 // Compter les vrais joueurs dans une session
 function countRealPlayers(gameCode) {
     let playerCount = 0;
+    const currentTime = Date.now();
+    const maxPlayerAge = 5 * 60 * 1000; // 5 minutes
+    
+    console.log(`Recherche des joueurs pour la session: ${gameCode}`);
     
     // Parcourir tous les éléments du localStorage pour trouver les joueurs de cette session
     for (let i = 0; i < localStorage.length; i++) {
@@ -538,14 +680,24 @@ function countRealPlayers(gameCode) {
             try {
                 const playerData = JSON.parse(localStorage.getItem(key));
                 if (playerData.gameCode === gameCode) {
-                    playerCount++;
+                    // Vérifier si le joueur est encore actif (moins de 5 minutes)
+                    const playerTime = new Date(playerData.completedAt || playerData.joinedAt || Date.now()).getTime();
+                    const playerAge = currentTime - playerTime;
+                    
+                    if (playerAge < maxPlayerAge) {
+                        playerCount++;
+                        console.log(`Joueur trouvé: ${playerData.playerId}, âge: ${Math.round(playerAge / 1000)}s`);
+                    } else {
+                        console.log(`Joueur expiré: ${playerData.playerId}, âge: ${Math.round(playerAge / 1000)}s`);
+                    }
                 }
             } catch (error) {
-                // Ignorer les erreurs de parsing
+                console.error('Erreur lors du parsing des données joueur:', error);
             }
         }
     }
     
+    console.log(`Nombre de joueurs actifs trouvés: ${playerCount}`);
     return Math.max(1, playerCount); // Au minimum 1 joueur
 }
 
