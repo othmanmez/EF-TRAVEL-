@@ -114,6 +114,9 @@ function handleAnswerChange(event) {
     surveyState.answers[questionNumber] = answer;
     saveData();
     
+    // Sauvegarder la progression
+    saveCurrentProgress();
+    
     // Animation de validation
     const questionElement = event.target.closest('.question');
     questionElement.style.borderLeftColor = '#A47C48';
@@ -389,7 +392,7 @@ function calculateRealCollectiveStats() {
 function getAllPlayerAnswers(gameCode) {
     const allAnswers = [];
     const currentTime = Date.now();
-    const maxPlayerAge = 10 * 60 * 1000; // 10 minutes
+    const maxPlayerAge = 2 * 60 * 60 * 1000; // 2 heures au lieu de 10 minutes
     
     console.log(`Récupération des réponses pour la session: ${gameCode}`);
     
@@ -443,6 +446,12 @@ function updatePlayerCount() {
                     if (window.socketManager && window.socketManager.isConnected) {
                         playerCountInfo.style.display = 'block';
                         playerCount.textContent = '...';
+                        
+                        // Demander les statistiques de session
+                        if (typeof window.socketManager.getSessionStats === 'function') {
+                            window.socketManager.getSessionStats();
+                        }
+                        
                         // Le nombre sera mis à jour par les événements Socket.io
                     } else {
                         // Mode fallback localStorage
@@ -454,12 +463,95 @@ function updatePlayerCount() {
                             playerCountInfo.style.display = 'block';
                             playerCount.textContent = '1';
                         }
+                        
+                        // Essayer de se reconnecter à Socket.io
+                        if (window.socketManager && typeof window.socketManager.joinSession === 'function') {
+                            console.log('🔄 Tentative de reconnexion Socket.io...');
+                            window.socketManager.joinSession(gameData.gameCode, `Player_${Date.now()}`);
+                        }
                     }
                 }
             }
         } catch (error) {
             console.error('Erreur lors de la mise à jour du nombre de joueurs:', error);
         }
+    }
+}
+
+// Exposer la fonction globalement pour Socket.io
+window.updatePlayerCount = updatePlayerCount;
+
+// Sauvegarder la progression actuelle du quiz
+function saveCurrentProgress() {
+    try {
+        // Sauvegarder les réponses
+        localStorage.setItem('efTravelAnswers', JSON.stringify(surveyState.answers));
+        
+        // Sauvegarder la question actuelle
+        localStorage.setItem('efTravelCurrentQuestion', surveyState.currentQuestionIndex.toString());
+        
+        // Sauvegarder l'état du quiz
+        const quizState = {
+            isCompleted: surveyState.isCompleted,
+            currentQuestionIndex: surveyState.currentQuestionIndex,
+            totalAnswers: Object.keys(surveyState.answers).length
+        };
+        localStorage.setItem('efTravelQuizState', JSON.stringify(quizState));
+        
+        console.log('💾 Progression sauvegardée:', quizState);
+    } catch (error) {
+        console.error('Erreur lors de la sauvegarde de la progression:', error);
+    }
+}
+
+// Restaurer la progression du quiz
+function restoreQuizProgress() {
+    try {
+        console.log('🔄 Restauration de la progression du quiz');
+        
+        // Charger les réponses sauvegardées
+        const savedAnswers = localStorage.getItem('efTravelAnswers');
+        if (savedAnswers) {
+            surveyState.answers = JSON.parse(savedAnswers);
+            console.log('✅ Réponses restaurées:', Object.keys(surveyState.answers).length, 'réponses');
+        } else {
+            surveyState.answers = {};
+        }
+        
+        // Charger la question actuelle
+        const currentQuestion = localStorage.getItem('efTravelCurrentQuestion');
+        if (currentQuestion) {
+            surveyState.currentQuestionIndex = parseInt(currentQuestion);
+            console.log('✅ Question actuelle restaurée:', surveyState.currentQuestionIndex + 1);
+        } else {
+            surveyState.currentQuestionIndex = 0;
+        }
+        
+        // Charger l'état du quiz
+        const quizState = localStorage.getItem('efTravelQuizState');
+        if (quizState) {
+            const state = JSON.parse(quizState);
+            surveyState.isCompleted = state.isCompleted || false;
+            console.log('✅ État du quiz restauré:', surveyState.isCompleted ? 'Terminé' : 'En cours');
+        } else {
+            surveyState.isCompleted = false;
+        }
+        
+        // Initialiser les autres propriétés
+        surveyState.sessionStats = {};
+        surveyState.playerCount = 0;
+        surveyState.isSessionActive = false;
+        
+        console.log('✅ Progression restaurée avec succès');
+    } catch (error) {
+        console.error('❌ Erreur lors de la restauration de la progression:', error);
+        // En cas d'erreur, initialiser avec des valeurs par défaut
+        surveyState.answers = {};
+        surveyState.currentQuestionIndex = 0;
+        surveyState.isCompleted = false;
+        surveyState.sessionStats = {};
+        surveyState.playerCount = 0;
+        surveyState.isSessionActive = false;
     }
 }
 
@@ -509,13 +601,39 @@ function savePlayerCompletion() {
             const gameData = JSON.parse(currentGame);
             const gameCode = gameData.gameCode;
             
+            console.log('💾 Sauvegarde des réponses:', surveyState.answers);
+            console.log('💾 Code de jeu:', gameCode);
+            
             // Utiliser Socket.io si disponible
             if (window.socketManager && window.socketManager.isConnected && typeof window.socketManager.saveAnswers === 'function') {
                 console.log('💾 Sauvegarde via Socket.io');
                 window.socketManager.saveAnswers(surveyState.answers);
                 window.socketManager.playerCompleted(surveyState.answers);
             } else {
-                // Fallback vers localStorage
+                console.log('💾 Socket.io non connecté, tentative de connexion...');
+                
+                // Essayer de se reconnecter à Socket.io
+                if (window.socketManager && typeof window.socketManager.joinSession === 'function') {
+                    window.socketManager.joinSession(gameCode, `Player_${Date.now()}`);
+                    
+                    // Attendre un peu et réessayer
+                    setTimeout(() => {
+                        if (window.socketManager && window.socketManager.isConnected) {
+                            console.log('💾 Reconnexion réussie - Sauvegarde via Socket.io');
+                            window.socketManager.saveAnswers(surveyState.answers);
+                            window.socketManager.playerCompleted(surveyState.answers);
+                        } else {
+                            console.log('💾 Échec de reconnexion - Sauvegarde via localStorage');
+                            saveToLocalStorage(gameCode, surveyState.answers);
+                        }
+                    }, 2000);
+                } else {
+                    // Fallback vers localStorage
+                    saveToLocalStorage(gameCode, surveyState.answers);
+                }
+            }
+            
+            function saveToLocalStorage(gameCode, answers) {
                 console.log('💾 Sauvegarde via localStorage (fallback)');
                 
                 const playerId = Date.now() + Math.random() * 1000;
@@ -523,7 +641,7 @@ function savePlayerCompletion() {
                 const playerKey = `efTravelPlayer_${gameCode}_${playerId}`;
                 const playerData = {
                     gameCode: gameCode,
-                    answers: surveyState.answers,
+                    answers: answers,
                     completedAt: new Date().toISOString(),
                     playerId: playerId,
                     sessionId: gameCode,
@@ -531,12 +649,14 @@ function savePlayerCompletion() {
                 };
                 
                 localStorage.setItem(playerKey, JSON.stringify(playerData));
+                console.log('💾 Joueur sauvegardé avec clé:', playerKey);
                 
                 const sessionData = getSessionDataFromStorage(gameCode);
                 if (sessionData) {
                     sessionData.completedPlayers = (sessionData.completedPlayers || 0) + 1;
                     sessionData.lastCompletion = new Date().toISOString();
                     localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
+                    console.log('💾 Session mise à jour:', sessionData);
                 }
             }
         } catch (error) {
@@ -633,6 +753,9 @@ function checkRealPlayers() {
                             showNotification(`👥 ${realPlayerCount - currentPlayerCount} new player(s) joined! Total: ${realPlayerCount}`);
                         }
                     }
+                    
+                    // Prolonger la session si le joueur est encore actif
+                    extendSessionLife(gameCode);
                 }
             }
         } catch (error) {
@@ -641,10 +764,25 @@ function checkRealPlayers() {
     }
 }
 
+// Prolonger la durée de vie de la session
+function extendSessionLife(gameCode) {
+    const sessionKey = `efTravelSession_${gameCode}`;
+    const sessionData = getSessionDataFromStorage(gameCode);
+    
+    if (sessionData) {
+        // Mettre à jour le timestamp de dernière activité
+        sessionData.lastActivity = new Date().toISOString();
+        sessionData.extendedUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2 heures
+        
+        localStorage.setItem(sessionKey, JSON.stringify(sessionData));
+        console.log(`⏰ Session ${gameCode} prolongée jusqu'à: ${sessionData.extendedUntil}`);
+    }
+}
+
 // Nettoyer les anciens joueurs
 function cleanOldPlayers(gameCode) {
     const currentTime = Date.now();
-    const maxPlayerAge = 10 * 60 * 1000; // 10 minutes
+    const maxPlayerAge = 2 * 60 * 60 * 1000; // 2 heures au lieu de 10 minutes
     let cleanedCount = 0;
     
     for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -679,7 +817,7 @@ function cleanOldPlayers(gameCode) {
 function countRealPlayers(gameCode) {
     let playerCount = 0;
     const currentTime = Date.now();
-    const maxPlayerAge = 5 * 60 * 1000; // 5 minutes
+    const maxPlayerAge = 2 * 60 * 60 * 1000; // 2 heures au lieu de 5 minutes
     
     console.log(`Recherche des joueurs pour la session: ${gameCode}`);
     
@@ -1043,26 +1181,37 @@ function loadSavedData() {
             // Se connecter automatiquement à Socket.io si en mode multijoueur
             if (surveyState.isMultiplayer && surveyState.gameCode && window.socketManager && typeof window.socketManager.joinSession === 'function') {
                 console.log('🔄 Reconnexion automatique à la session multijoueur');
-                setTimeout(() => {
-                    if (window.socketManager.isConnected) {
+                
+                // Attendre que Socket.io soit initialisé
+                const connectToSession = () => {
+                    if (window.socketManager) {
                         window.socketManager.joinSession(surveyState.gameCode, `Player_${Date.now()}`);
+                        
+                        // Vérifier la connexion après un délai
+                        setTimeout(() => {
+                            if (window.socketManager.isConnected) {
+                                console.log('✅ Socket.io connecté - Mode multijoueur actif');
+                                updatePlayerCount();
+                            } else {
+                                console.log('⏳ Mode fallback localStorage - Socket.io non connecté');
+                                updatePlayerCount();
+                            }
+                        }, 3000);
                     } else {
-                        console.log('⏳ Mode fallback localStorage - Socket.io non connecté');
+                        console.log('⏳ Attente de l\'initialisation de Socket.io...');
+                        setTimeout(connectToSession, 500);
                     }
-                }, 1000);
+                };
+                
+                setTimeout(connectToSession, 1000);
             }
         } catch (error) {
             console.error('Erreur lors du chargement des données de jeu:', error);
         }
     }
     
-    // Toujours réinitialiser le quiz pour une nouvelle session
-    surveyState.answers = {};
-    surveyState.isCompleted = false;
-    surveyState.currentQuestionIndex = 0;
-    surveyState.sessionStats = {};
-    surveyState.playerCount = 0;
-    surveyState.isSessionActive = false;
+    // Restaurer la progression du quiz au lieu de réinitialiser
+    restoreQuizProgress();
     
     // Afficher la première question
     displayCurrentQuestion();
@@ -1090,7 +1239,9 @@ function loadSavedData() {
 
 // Suppression des données
 function clearData() {
-    localStorage.removeItem('efTravelSurvey');
+    // Ne plus nettoyer automatiquement les données lors du changement d'onglet
+    console.log('clearData appelée - mais ne nettoie plus automatiquement');
+    // localStorage.removeItem('efTravelSurvey'); // Commenté pour préserver la progression
 }
 
 // Affichage des notifications
@@ -1144,17 +1295,21 @@ window.addEventListener('error', function(event) {
 // Gestion de la visibilité de la page
 document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') {
-        // Quand la page redevient visible, réinitialiser le quiz
-        console.log('Page redevient visible - réinitialisation du quiz');
+        // Quand la page redevient visible, restaurer la progression au lieu de réinitialiser
+        console.log('Page redevient visible - restauration de la progression');
         loadSavedData();
+    } else {
+        // Quand la page devient cachée, sauvegarder la progression
+        console.log('Page cachée - sauvegarde de la progression');
+        saveCurrentProgress();
     }
 });
 
 // Gestion de la fermeture/actualisation de la page
 window.addEventListener('beforeunload', function() {
-    // Nettoyer les données quand le joueur quitte
-    console.log('Joueur quitte la page - nettoyage des données');
-    clearData();
+    // Ne pas nettoyer les données - les sessions restent actives 2 heures
+    console.log('Joueur quitte la page - session maintenue active pendant 2h');
+    // clearData(); // Commenté pour maintenir les sessions actives
 });
 
 // Gestion du rechargement de la page
@@ -1180,8 +1335,41 @@ function checkAccess() {
     }
 }
 
+// Fonction pour quitter explicitement le jeu
+function leaveGame() {
+    const currentGame = localStorage.getItem('efTravelCurrentGame');
+    if (currentGame) {
+        try {
+            const gameData = JSON.parse(currentGame);
+            if (gameData.isMultiplayer && gameData.gameCode) {
+                console.log(`👋 Joueur quitte explicitement la session ${gameData.gameCode}`);
+                
+                // Utiliser Socket.io si disponible
+                if (window.socketManager && typeof window.socketManager.leaveSession === 'function') {
+                    window.socketManager.leaveSession();
+                }
+                
+                // Marquer la session comme terminée
+                const sessionData = getSessionDataFromStorage(gameData.gameCode);
+                if (sessionData) {
+                    sessionData.playerLeft = true;
+                    sessionData.leftAt = new Date().toISOString();
+                    localStorage.setItem(`efTravelSession_${gameData.gameCode}`, JSON.stringify(sessionData));
+                }
+                
+                // Supprimer les données de jeu
+                localStorage.removeItem('efTravelCurrentGame');
+                console.log(`🗑️ Données de jeu supprimées - session quittée explicitement`);
+            }
+        } catch (error) {
+            console.error('Erreur lors de la sortie du jeu:', error);
+        }
+    }
+}
+
 // Redirection vers la page d'accueil
 function redirectToHome() {
+    leaveGame(); // Appeler leaveGame avant de rediriger
     window.location.href = 'home.html';
 }
 

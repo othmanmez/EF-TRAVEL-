@@ -15,37 +15,52 @@ class SocketManager {
             return false;
         }
 
+        console.log('🔌 Initialisation de la connexion Socket.io...');
+
         // Se connecter au serveur Socket.io automatiquement (URL relative pour le déploiement)
         this.socket = io({
             transports: ['websocket', 'polling'],
             timeout: 10000,
             reconnection: true,
             reconnectionAttempts: Infinity,
-            reconnectionDelay: 2000,
-            reconnectionDelayMax: 10000,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
             maxReconnectionAttempts: Infinity,
-            autoConnect: true
+            autoConnect: true,
+            forceNew: true
         });
         
         // Événements de connexion automatique
         this.socket.on('connect', () => {
             this.isConnected = true;
+            console.log('✅ Socket.io connecté avec succès!');
             this.updateConnectionStatus(true);
         });
 
-        this.socket.on('disconnect', () => {
+        this.socket.on('disconnect', (reason) => {
             this.isConnected = false;
+            console.log('❌ Socket.io déconnecté:', reason);
             this.updateConnectionStatus(false);
         });
 
         this.socket.on('connect_error', (error) => {
             this.isConnected = false;
+            console.error('❌ Erreur de connexion Socket.io:', error);
             this.updateConnectionStatus(false);
         });
 
         this.socket.on('reconnect', (attemptNumber) => {
             this.isConnected = true;
+            console.log('🔄 Socket.io reconnecté après', attemptNumber, 'tentatives');
             this.updateConnectionStatus(true);
+        });
+
+        this.socket.on('reconnect_attempt', (attemptNumber) => {
+            console.log('🔄 Tentative de reconnexion Socket.io #', attemptNumber);
+        });
+
+        this.socket.on('reconnect_error', (error) => {
+            console.error('❌ Erreur de reconnexion Socket.io:', error);
         });
 
         // Événements de session
@@ -88,9 +103,27 @@ class SocketManager {
         this.playerName = playerName || `Player_${Date.now()}`;
 
         console.log(`🎮 Tentative de rejoindre la session ${gameCode} en tant que ${this.playerName}`);
+        console.log(`🔌 État de connexion: ${this.isConnected}`);
 
-        // Toujours essayer d'émettre, même si pas connecté
-        if (this.socket) {
+        // Attendre la connexion si nécessaire
+        if (!this.isConnected) {
+            console.log('⏳ Attente de la connexion Socket.io...');
+            
+            const waitForConnection = () => {
+                if (this.isConnected && this.socket) {
+                    this.socket.emit('join-session', {
+                        gameCode: gameCode,
+                        playerName: this.playerName
+                    });
+                    console.log(`📤 Émission join-session pour ${gameCode}`);
+                } else {
+                    console.log('⏳ Encore en attente de connexion...');
+                    setTimeout(waitForConnection, 500);
+                }
+            };
+            
+            setTimeout(waitForConnection, 100);
+        } else if (this.socket) {
             this.socket.emit('join-session', {
                 gameCode: gameCode,
                 playerName: this.playerName
@@ -105,10 +138,13 @@ class SocketManager {
 
     // Sauvegarder les réponses
     saveAnswers(answers) {
-        if (!this.isConnected || !this.currentGameCode) {
-            console.error('Pas de session active');
+        if (!this.currentGameCode) {
+            console.error('Pas de code de jeu actif');
             return false;
         }
+
+        console.log('💾 Sauvegarde des réponses via Socket.io:', answers);
+        console.log('💾 Code de jeu:', this.currentGameCode);
 
         this.socket.emit('save-answers', {
             gameCode: this.currentGameCode,
@@ -121,10 +157,13 @@ class SocketManager {
 
     // Marquer le joueur comme terminé
     playerCompleted(answers) {
-        if (!this.isConnected || !this.currentGameCode) {
-            console.error('Pas de session active');
+        if (!this.currentGameCode) {
+            console.error('Pas de code de jeu actif');
             return false;
         }
+
+        console.log('✅ Joueur terminé - envoi des réponses finales:', answers);
+        console.log('✅ Code de jeu:', this.currentGameCode);
 
         this.socket.emit('player-completed', {
             gameCode: this.currentGameCode,
@@ -168,6 +207,11 @@ class SocketManager {
         // Mettre à jour les statistiques d'attente si on est en mode multijoueur
         if (typeof updateWaitingStats === 'function') {
             updateWaitingStats();
+        }
+        
+        // Forcer la mise à jour de l'affichage des joueurs dans le quiz
+        if (typeof updatePlayerCount === 'function') {
+            updatePlayerCount();
         }
     }
 
@@ -220,6 +264,8 @@ class SocketManager {
     }
 
     updatePlayerCount(count) {
+        console.log(`📊 Mise à jour du nombre de joueurs: ${count}`);
+        
         const playerCountElement = document.getElementById('playerCount');
         if (playerCountElement) {
             playerCountElement.textContent = count;
@@ -229,6 +275,11 @@ class SocketManager {
         const totalPlayersElement = document.getElementById('totalPlayers');
         if (totalPlayersElement) {
             totalPlayersElement.textContent = count;
+        }
+        
+        // Forcer la mise à jour de l'affichage dans le quiz
+        if (typeof window.updatePlayerCount === 'function') {
+            window.updatePlayerCount();
         }
     }
 

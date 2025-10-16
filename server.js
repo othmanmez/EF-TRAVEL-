@@ -26,7 +26,8 @@ const players = new Map(); // socketId -> player data
 
 // Gestion des connexions Socket.io
 io.on('connection', (socket) => {
-    console.log(`Nouveau joueur connecté: ${socket.id}`);
+    console.log(`🔌 Nouveau joueur connecté: ${socket.id}`);
+    console.log(`📊 Total connexions actives: ${io.engine.clientsCount}`);
 
     // Rejoindre une session
     socket.on('join-session', (data) => {
@@ -64,6 +65,8 @@ io.on('connection', (socket) => {
         
         console.log(`👥 Session ${gameCode}: ${session.players.size} joueur(s) connecté(s)`);
         console.log(`📋 Joueurs dans la session:`, Array.from(session.players.values()).map(p => p.playerName));
+        console.log(`🔍 DEBUG - Total joueurs dans session:`, session.players.size);
+        console.log(`🔍 DEBUG - Liste complète:`, Array.from(session.players.entries()));
         
         // Notifier tous les joueurs de la session
         io.to(gameCode).emit('player-joined', {
@@ -98,11 +101,14 @@ io.on('connection', (socket) => {
         const { gameCode, answers } = data;
         const player = players.get(socket.id);
         
+        console.log(`💾 Sauvegarde des réponses pour le joueur ${socket.id} dans la session ${gameCode}`);
+        console.log(`💾 Réponses reçues:`, answers);
+        
         if (player && player.gameCode === gameCode) {
             player.answers = answers;
             player.lastUpdate = new Date().toISOString();
             
-            console.log(`Réponses sauvegardées pour ${socket.id} dans ${gameCode}`);
+            console.log(`✅ Réponses sauvegardées pour ${player.playerName}:`, answers);
             
             // Notifier la session
             socket.to(gameCode).emit('player-updated', {
@@ -110,6 +116,10 @@ io.on('connection', (socket) => {
                 playerName: player.playerName,
                 hasAnswers: Object.keys(answers).length > 0
             });
+        } else {
+            console.error(`❌ Erreur: Joueur ${socket.id} non trouvé ou mauvais code de jeu`);
+            console.error(`❌ Joueur trouvé:`, player);
+            console.error(`❌ Code de jeu attendu:`, gameCode);
         }
     });
 
@@ -208,16 +218,25 @@ io.on('connection', (socket) => {
             
             // Nettoyer la session si elle est vide
             if (session.players.size === 0) {
-                sessions.delete(gameCode);
-                console.log(`🗑️ Session ${gameCode} supprimée (vide)`);
+                // Attendre 2 heures avant de supprimer la session
+                setTimeout(() => {
+                    if (sessions.has(gameCode) && sessions.get(gameCode).players.size === 0) {
+                        sessions.delete(gameCode);
+                        console.log(`🗑️ Session ${gameCode} supprimée après 2h d'inactivité`);
+                    }
+                }, 2 * 60 * 60 * 1000); // 2 heures
+                console.log(`⏰ Session ${gameCode} programmée pour suppression dans 2h`);
             }
         }
     });
 
 
     // Gestion de la déconnexion
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
         const player = players.get(socket.id);
+        
+        console.log(`👋 Joueur ${socket.id} déconnecté (${reason})`);
+        console.log(`📊 Total connexions restantes: ${io.engine.clientsCount}`);
         
         if (player) {
             const { gameCode } = player;
@@ -245,10 +264,15 @@ io.on('connection', (socket) => {
                     });
                 }
                 
-                // Nettoyer la session si elle est vide
+                // Programmer la suppression de la session après 2 heures
                 if (session.players.size === 0) {
-                    sessions.delete(gameCode);
-                    console.log(`🗑️ Session ${gameCode} supprimée (vide)`);
+                    setTimeout(() => {
+                        if (sessions.has(gameCode) && sessions.get(gameCode).players.size === 0) {
+                            sessions.delete(gameCode);
+                            console.log(`🗑️ Session ${gameCode} supprimée après 2h d'inactivité`);
+                        }
+                    }, 2 * 60 * 60 * 1000); // 2 heures
+                    console.log(`⏰ Session ${gameCode} programmée pour suppression dans 2h`);
                 }
             }
         }
@@ -271,6 +295,9 @@ function calculateCollectiveStats(session) {
     ];
     
     const collectiveStats = {};
+    const totalPlayers = session.players.size;
+    
+    console.log(`🧮 Calcul des statistiques pour ${totalPlayers} joueurs dans la session ${session.gameCode}`);
     
     for (let i = 1; i <= 10; i++) {
         let yesCount = 0;
@@ -278,6 +305,7 @@ function calculateCollectiveStats(session) {
         
         // Compter les réponses pour cette question
         session.players.forEach(player => {
+            console.log(`🔍 Vérification joueur ${player.playerName}:`, player.answers);
             if (player.answers && player.answers[i]) {
                 if (player.answers[i] === 'yes') {
                     yesCount++;
@@ -297,8 +325,11 @@ function calculateCollectiveStats(session) {
             yesPercentage: totalResponses > 0 ? Math.round((yesCount / totalResponses) * 100) : 0,
             noPercentage: totalResponses > 0 ? Math.round((noCount / totalResponses) * 100) : 0
         };
+        
+        console.log(`📊 Question ${i}: ${yesCount} Oui, ${noCount} Non (${totalResponses} réponses total)`);
     }
     
+    console.log(`📈 Statistiques finales calculées pour ${totalPlayers} joueurs`);
     return collectiveStats;
 }
 

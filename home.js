@@ -150,9 +150,21 @@ function createGame() {
     }
     
         // Utiliser Socket.io si disponible
-        if (window.socketManager && window.socketManager.isConnected && typeof window.socketManager.joinSession === 'function') {
+        if (window.socketManager && typeof window.socketManager.joinSession === 'function') {
             console.log('🎮 Création de partie via Socket.io');
             window.socketManager.joinSession(gameCode, `Host_${Date.now()}`);
+            
+            // Attendre un peu pour la connexion puis vérifier
+            setTimeout(() => {
+                if (window.socketManager.isConnected) {
+                    console.log('✅ Socket.io connecté - Mode multijoueur actif');
+                } else {
+                    console.log('⚠️ Socket.io non connecté - Mode fallback localStorage');
+                    appState.currentGame.playerCount = 1;
+                    appState.currentGame.startTime = new Date().toISOString();
+                    saveSessionData(gameCode, appState.currentGame);
+                }
+            }, 2000);
         } else {
             console.log('💾 Création de partie via localStorage (fallback)');
             appState.currentGame.playerCount = 1;
@@ -188,7 +200,7 @@ function joinGame() {
     }
     
         // Utiliser Socket.io si disponible
-        if (window.socketManager && window.socketManager.isConnected && typeof window.socketManager.joinSession === 'function') {
+        if (window.socketManager && typeof window.socketManager.joinSession === 'function') {
             console.log('🎮 Rejoindre partie via Socket.io');
             appState.isMultiplayer = true;
             appState.gameCode = gameCode;
@@ -204,9 +216,15 @@ function joinGame() {
             saveGameState();
             showJoinStatus(`✅ Game joined successfully! Connecting to server...`, 'success');
             
+            // Attendre la connexion Socket.io avant de rediriger
             setTimeout(() => {
+                if (window.socketManager.isConnected) {
+                    console.log('✅ Socket.io connecté - Mode multijoueur actif');
+                } else {
+                    console.log('⚠️ Socket.io non connecté - Mode fallback localStorage');
+                }
                 redirectToQuiz();
-            }, 1500);
+            }, 2000);
         } else {
             // Fallback vers localStorage
             console.log('💾 Rejoindre partie via localStorage (fallback)');
