@@ -181,6 +181,13 @@ class SocketManager {
             return false;
         }
 
+        // Éviter les demandes répétées
+        if (this.lastStatsRequest && Date.now() - this.lastStatsRequest < 2000) {
+            console.log('📊 Demande de statistiques ignorée (trop récente)');
+            return false;
+        }
+
+        this.lastStatsRequest = Date.now();
         this.socket.emit('get-session-stats', {
             gameCode: this.currentGameCode
         });
@@ -254,6 +261,17 @@ class SocketManager {
     handleSessionStats(data) {
         // Mettre à jour les statistiques de session
         this.updateSessionStats(data);
+        
+        // Mettre à jour le nombre de joueurs
+        if (data.totalPlayers) {
+            this.updatePlayerCount(data.totalPlayers);
+        }
+        
+        // Éviter les logs répétitifs
+        if (!this.lastStatsLog || Date.now() - this.lastStatsLog > 5000) {
+            console.log('📈 Statistiques de session:', data);
+            this.lastStatsLog = Date.now();
+        }
     }
 
 
@@ -269,12 +287,18 @@ class SocketManager {
         const playerCountElement = document.getElementById('playerCount');
         if (playerCountElement) {
             playerCountElement.textContent = count;
+            console.log(`✅ Nombre de joueurs affiché: ${count}`);
         }
 
         // Mettre à jour les statistiques d'attente si elles existent
         const totalPlayersElement = document.getElementById('totalPlayers');
         if (totalPlayersElement) {
             totalPlayersElement.textContent = count;
+        }
+        
+        // Mettre à jour l'état global
+        if (window.surveyState) {
+            window.surveyState.playerCount = count;
         }
         
         // Forcer la mise à jour de l'affichage dans le quiz
@@ -309,7 +333,11 @@ class SocketManager {
     }
 
     updateSessionStats(data) {
-        console.log('Statistiques de session mises à jour:', data);
+        // Éviter les logs répétitifs
+        if (!this.lastUpdateLog || Date.now() - this.lastUpdateLog > 5000) {
+            console.log('📊 Statistiques de session mises à jour:', data);
+            this.lastUpdateLog = Date.now();
+        }
         // Mettre à jour l'interface avec les nouvelles statistiques
     }
 

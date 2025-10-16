@@ -62,17 +62,15 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSavedData();
     displayGameInfo();
     
-    // Mettre à jour le nombre de joueurs toutes les 3 secondes en mode multijoueur
+    // Mettre à jour le nombre de joueurs toutes les 10 secondes en mode multijoueur
     setInterval(() => {
         updatePlayerCount();
         updateWaitingStats();
         checkRealPlayers();
         
-        // Demander les statistiques de session via Socket.io si connecté
-        if (window.socketManager && window.socketManager.isConnected && surveyState.isMultiplayer && surveyState.gameCode) {
-            window.socketManager.getSessionStats();
-        }
-    }, 3000);
+        // Ne plus demander automatiquement les statistiques - elles sont gérées par les événements Socket.io
+        // Les statistiques sont maintenant demandées uniquement lors des événements (player-joined, player-left, etc.)
+    }, 10000);
 });
 
 // Initialisation du sondage
@@ -388,40 +386,13 @@ function calculateRealCollectiveStats() {
     }
 }
 
-// Récupérer toutes les réponses des joueurs d'une session
+// Récupérer toutes les réponses des joueurs d'une session (Socket.io uniquement)
 function getAllPlayerAnswers(gameCode) {
-    const allAnswers = [];
-    const currentTime = Date.now();
-    const maxPlayerAge = 2 * 60 * 60 * 1000; // 2 heures au lieu de 10 minutes
+    console.log(`📊 Récupération des réponses via Socket.io pour la session: ${gameCode}`);
     
-    console.log(`Récupération des réponses pour la session: ${gameCode}`);
-    
-    // Parcourir tous les éléments du localStorage pour trouver les réponses des joueurs
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('efTravelPlayer_')) {
-            try {
-                const playerData = JSON.parse(localStorage.getItem(key));
-                if (playerData.gameCode === gameCode && playerData.answers) {
-                    // Vérifier si le joueur est encore actif
-                    const playerTime = new Date(playerData.completedAt || Date.now()).getTime();
-                    const playerAge = currentTime - playerTime;
-                    
-                    if (playerAge < maxPlayerAge) {
-                        allAnswers.push(playerData);
-                        console.log(`Réponses trouvées pour le joueur ${playerData.playerId}:`, playerData.answers);
-                    } else {
-                        console.log(`Joueur expiré ignoré: ${playerData.playerId}`);
-                    }
-                }
-            } catch (error) {
-                console.error('Erreur lors du parsing des réponses joueur:', error);
-            }
-        }
-    }
-    
-    console.log(`Nombre de réponses récupérées: ${allAnswers.length}`);
-    return allAnswers;
+    // Socket.io gère maintenant toutes les réponses
+    // Cette fonction n'est plus utilisée car Socket.io gère tout
+    return [];
 }
 
 // Récupérer les données de session depuis le localStorage
@@ -442,30 +413,28 @@ function updatePlayerCount() {
                 const playerCount = document.getElementById('playerCount');
                 
                 if (playerCountInfo && playerCount) {
-                    // Essayer d'obtenir le nombre de joueurs via Socket.io
+                    // Utiliser Socket.io uniquement pour le multijoueur
                     if (window.socketManager && window.socketManager.isConnected) {
                         playerCountInfo.style.display = 'block';
-                        playerCount.textContent = '...';
                         
-                        // Demander les statistiques de session
-                        if (typeof window.socketManager.getSessionStats === 'function') {
+                        // Demander les statistiques de session une seule fois
+                        if (typeof window.socketManager.getSessionStats === 'function' && !window.statsRequested) {
+                            window.statsRequested = true;
                             window.socketManager.getSessionStats();
-                        }
-                        
-                        // Le nombre sera mis à jour par les événements Socket.io
-                    } else {
-                        // Mode fallback localStorage
-                        const sessionData = getSessionDataFromStorage(gameData.gameCode);
-                        if (sessionData && sessionData.playerCount) {
-                            playerCountInfo.style.display = 'block';
-                            playerCount.textContent = sessionData.playerCount;
+                            playerCount.textContent = '...';
                         } else {
-                            playerCountInfo.style.display = 'block';
-                            playerCount.textContent = '1';
+                            // Afficher le nombre de joueurs depuis l'état actuel
+                            playerCount.textContent = surveyState.playerCount || '1';
                         }
+                    } else {
+                        // Pas de fallback - Socket.io requis pour le multijoueur
+                        console.log('❌ Socket.io non connecté - Mode multijoueur indisponible');
+                        playerCountInfo.style.display = 'block';
+                        playerCount.textContent = '❌';
                         
                         // Essayer de se reconnecter à Socket.io
-                        if (window.socketManager && typeof window.socketManager.joinSession === 'function') {
+                        if (window.socketManager && typeof window.socketManager.joinSession === 'function' && !window.reconnectAttempted) {
+                            window.reconnectAttempted = true;
                             console.log('🔄 Tentative de reconnexion Socket.io...');
                             window.socketManager.joinSession(gameData.gameCode, `Player_${Date.now()}`);
                         }
@@ -509,6 +478,10 @@ function restoreQuizProgress() {
     try {
         console.log('🔄 Restauration de la progression du quiz');
         
+        // Détecter si on est sur mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        console.log('📱 Détection mobile:', isMobile);
+        
         // Charger les réponses sauvegardées
         const savedAnswers = localStorage.getItem('efTravelAnswers');
         if (savedAnswers) {
@@ -521,10 +494,22 @@ function restoreQuizProgress() {
         // Charger la question actuelle
         const currentQuestion = localStorage.getItem('efTravelCurrentQuestion');
         if (currentQuestion) {
-            surveyState.currentQuestionIndex = parseInt(currentQuestion);
-            console.log('✅ Question actuelle restaurée:', surveyState.currentQuestionIndex + 1);
+            const questionIndex = parseInt(currentQuestion);
+            console.log('🔍 Index de question trouvé:', questionIndex);
+            
+            // Validation stricte pour éviter les index invalides
+            if (isNaN(questionIndex) || questionIndex < 0 || questionIndex >= surveyState.totalQuestions) {
+                console.log('⚠️ Index de question invalide, réinitialisation à 0');
+                surveyState.currentQuestionIndex = 0;
+                // Nettoyer les données corrompues
+                localStorage.removeItem('efTravelCurrentQuestion');
+            } else {
+                surveyState.currentQuestionIndex = questionIndex;
+                console.log('✅ Question actuelle restaurée:', surveyState.currentQuestionIndex + 1);
+            }
         } else {
             surveyState.currentQuestionIndex = 0;
+            console.log('📝 Aucune question sauvegardée, démarrage à 0');
         }
         
         // Charger l'état du quiz
@@ -535,6 +520,32 @@ function restoreQuizProgress() {
             console.log('✅ État du quiz restauré:', surveyState.isCompleted ? 'Terminé' : 'En cours');
         } else {
             surveyState.isCompleted = false;
+        }
+        
+        // Validation finale pour s'assurer qu'on ne commence pas à la question 10
+        if (surveyState.currentQuestionIndex >= surveyState.totalQuestions - 1) {
+            console.log('⚠️ Correction: index trop élevé, réinitialisation à 0');
+            surveyState.currentQuestionIndex = 0;
+            surveyState.answers = {};
+            surveyState.isCompleted = false;
+            
+            // Nettoyer les données corrompues
+            localStorage.removeItem('efTravelCurrentQuestion');
+            localStorage.removeItem('efTravelAnswers');
+            localStorage.removeItem('efTravelQuizState');
+        }
+        
+        // Validation supplémentaire pour les réponses
+        if (Object.keys(surveyState.answers).length > surveyState.currentQuestionIndex + 1) {
+            console.log('⚠️ Correction: trop de réponses par rapport à la question actuelle');
+            surveyState.currentQuestionIndex = 0;
+            surveyState.answers = {};
+            surveyState.isCompleted = false;
+            
+            // Nettoyer les données corrompues
+            localStorage.removeItem('efTravelCurrentQuestion');
+            localStorage.removeItem('efTravelAnswers');
+            localStorage.removeItem('efTravelQuizState');
         }
         
         // Initialiser les autres propriétés
@@ -604,13 +615,13 @@ function savePlayerCompletion() {
             console.log('💾 Sauvegarde des réponses:', surveyState.answers);
             console.log('💾 Code de jeu:', gameCode);
             
-            // Utiliser Socket.io si disponible
+            // Utiliser Socket.io uniquement pour le multijoueur
             if (window.socketManager && window.socketManager.isConnected && typeof window.socketManager.saveAnswers === 'function') {
                 console.log('💾 Sauvegarde via Socket.io');
                 window.socketManager.saveAnswers(surveyState.answers);
                 window.socketManager.playerCompleted(surveyState.answers);
             } else {
-                console.log('💾 Socket.io non connecté, tentative de connexion...');
+                console.log('❌ Socket.io non connecté - Impossible de sauvegarder en mode multijoueur');
                 
                 // Essayer de se reconnecter à Socket.io
                 if (window.socketManager && typeof window.socketManager.joinSession === 'function') {
@@ -623,40 +634,13 @@ function savePlayerCompletion() {
                             window.socketManager.saveAnswers(surveyState.answers);
                             window.socketManager.playerCompleted(surveyState.answers);
                         } else {
-                            console.log('💾 Échec de reconnexion - Sauvegarde via localStorage');
-                            saveToLocalStorage(gameCode, surveyState.answers);
+                            console.log('❌ Échec de reconnexion - Mode multijoueur indisponible');
+                            showNotification('❌ Erreur de connexion. Mode multijoueur indisponible.', 'error');
                         }
                     }, 2000);
                 } else {
-                    // Fallback vers localStorage
-                    saveToLocalStorage(gameCode, surveyState.answers);
-                }
-            }
-            
-            function saveToLocalStorage(gameCode, answers) {
-                console.log('💾 Sauvegarde via localStorage (fallback)');
-                
-                const playerId = Date.now() + Math.random() * 1000;
-                
-                const playerKey = `efTravelPlayer_${gameCode}_${playerId}`;
-                const playerData = {
-                    gameCode: gameCode,
-                    answers: answers,
-                    completedAt: new Date().toISOString(),
-                    playerId: playerId,
-                    sessionId: gameCode,
-                    isActive: true
-                };
-                
-                localStorage.setItem(playerKey, JSON.stringify(playerData));
-                console.log('💾 Joueur sauvegardé avec clé:', playerKey);
-                
-                const sessionData = getSessionDataFromStorage(gameCode);
-                if (sessionData) {
-                    sessionData.completedPlayers = (sessionData.completedPlayers || 0) + 1;
-                    sessionData.lastCompletion = new Date().toISOString();
-                    localStorage.setItem(`efTravelSession_${gameCode}`, JSON.stringify(sessionData));
-                    console.log('💾 Session mise à jour:', sessionData);
+                    console.log('❌ Socket.io non disponible - Mode multijoueur indisponible');
+                    showNotification('❌ Socket.io non disponible. Mode multijoueur indisponible.', 'error');
                 }
             }
         } catch (error) {
@@ -1213,9 +1197,22 @@ function loadSavedData() {
     // Restaurer la progression du quiz au lieu de réinitialiser
     restoreQuizProgress();
     
+    // Validation finale avant d'afficher la question
+    if (surveyState.currentQuestionIndex >= surveyState.totalQuestions) {
+        console.log('🚨 Index de question invalide détecté, réinitialisation complète');
+        surveyState.currentQuestionIndex = 0;
+        surveyState.answers = {};
+        surveyState.isCompleted = false;
+    }
+    
     // Afficher la première question
     displayCurrentQuestion();
     updateProgress();
+    
+    // Forcer la mise à jour du nombre de joueurs
+    setTimeout(() => {
+        updatePlayerCount();
+    }, 1000);
     
     // Masquer les résultats s'ils étaient affichés
     document.getElementById('results').style.display = 'none';
@@ -1421,12 +1418,14 @@ function debugSurvey() {
 
 // Afficher les résultats collectifs reçus via Socket.io
 function displayCollectiveResults(data) {
-    console.log('Affichage des résultats collectifs:', data);
+    console.log('🏆 Affichage des résultats collectifs:', data);
     
-    // Mettre à jour l'état du sondage
-    surveyState.playerCount = data.totalPlayers;
+    // Mettre à jour l'état du sondage avec le bon nombre de joueurs
+    surveyState.playerCount = data.totalPlayers || 1;
     surveyState.isSessionActive = true;
     surveyState.sessionStats = {};
+    
+    console.log('👥 Nombre de joueurs dans les résultats:', surveyState.playerCount);
     
     // Convertir les données du serveur au format attendu
     for (let i = 1; i <= 10; i++) {
@@ -1434,7 +1433,8 @@ function displayCollectiveResults(data) {
         if (questionData) {
             surveyState.sessionStats[i] = {
                 yes: questionData.yesCount,
-                no: questionData.noCount
+                no: questionData.noCount,
+                totalPlayers: questionData.totalPlayers || surveyState.playerCount
             };
         }
     }

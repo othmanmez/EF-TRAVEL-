@@ -149,27 +149,25 @@ function createGame() {
         gameModes.style.display = 'none';
     }
     
-        // Utiliser Socket.io si disponible
+        // Utiliser Socket.io uniquement pour le multijoueur
         if (window.socketManager && typeof window.socketManager.joinSession === 'function') {
             console.log('🎮 Création de partie via Socket.io');
             window.socketManager.joinSession(gameCode, `Host_${Date.now()}`);
             
-            // Attendre un peu pour la connexion puis vérifier
+            // Attendre la connexion Socket.io
             setTimeout(() => {
                 if (window.socketManager.isConnected) {
                     console.log('✅ Socket.io connecté - Mode multijoueur actif');
                 } else {
-                    console.log('⚠️ Socket.io non connecté - Mode fallback localStorage');
-                    appState.currentGame.playerCount = 1;
-                    appState.currentGame.startTime = new Date().toISOString();
-                    saveSessionData(gameCode, appState.currentGame);
+                    console.log('❌ Socket.io non connecté - Impossible de créer une partie multijoueur');
+                    showNotification('❌ Erreur de connexion. Impossible de créer une partie multijoueur.', 'error');
+                    return;
                 }
             }, 2000);
         } else {
-            console.log('💾 Création de partie via localStorage (fallback)');
-            appState.currentGame.playerCount = 1;
-            appState.currentGame.startTime = new Date().toISOString();
-            saveSessionData(gameCode, appState.currentGame);
+            console.log('❌ Socket.io non disponible - Impossible de créer une partie multijoueur');
+            showNotification('❌ Socket.io non disponible. Impossible de créer une partie multijoueur.', 'error');
+            return;
         }
     
     saveGameState();
@@ -199,7 +197,7 @@ function joinGame() {
         return;
     }
     
-        // Utiliser Socket.io si disponible
+        // Utiliser Socket.io uniquement pour rejoindre une partie
         if (window.socketManager && typeof window.socketManager.joinSession === 'function') {
             console.log('🎮 Rejoindre partie via Socket.io');
             appState.isMultiplayer = true;
@@ -220,44 +218,15 @@ function joinGame() {
             setTimeout(() => {
                 if (window.socketManager.isConnected) {
                     console.log('✅ Socket.io connecté - Mode multijoueur actif');
+                    redirectToQuiz();
                 } else {
-                    console.log('⚠️ Socket.io non connecté - Mode fallback localStorage');
+                    console.log('❌ Socket.io non connecté - Impossible de rejoindre la partie');
+                    showJoinStatus('❌ Erreur de connexion. Impossible de rejoindre la partie.', 'error');
                 }
-                redirectToQuiz();
             }, 2000);
         } else {
-            // Fallback vers localStorage
-            console.log('💾 Rejoindre partie via localStorage (fallback)');
-            
-            if (validateGameCode(gameCode)) {
-                appState.isMultiplayer = true;
-                appState.gameCode = gameCode;
-                appState.currentGame = {
-                    type: 'multiplayer',
-                    code: gameCode,
-                    joinTime: new Date().toISOString(),
-                    isJoining: true
-                };
-                
-                const sessionData = getSessionData(gameCode);
-                if (sessionData) {
-                    appState.currentGame.playerCount = sessionData.playerCount;
-                    appState.currentGame.startTime = sessionData.startTime;
-                } else {
-                    appState.currentGame.playerCount = 1;
-                    appState.currentGame.startTime = new Date().toISOString();
-                }
-                
-                saveGameState();
-                saveSessionData(gameCode, appState.currentGame);
-                showJoinStatus(`✅ Game joined successfully! ${appState.currentGame.playerCount} player(s) in session.`, 'success');
-                
-                setTimeout(() => {
-                    redirectToQuiz();
-                }, 1500);
-            } else {
-                showJoinStatus('❌ Game code not found! Check the code.', 'error');
-            }
+            console.log('❌ Socket.io non disponible - Impossible de rejoindre une partie multijoueur');
+            showJoinStatus('❌ Socket.io non disponible. Impossible de rejoindre une partie multijoueur.', 'error');
         }
 }
 

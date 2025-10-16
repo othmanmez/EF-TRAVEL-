@@ -299,12 +299,18 @@ function calculateCollectiveStats(session) {
     
     console.log(`🧮 Calcul des statistiques pour ${totalPlayers} joueurs dans la session ${session.gameCode}`);
     
+    // Compter seulement les joueurs qui ont terminé le quiz
+    const completedPlayers = Array.from(session.players.values()).filter(player => player.isCompleted);
+    const actualPlayerCount = completedPlayers.length;
+    
+    console.log(`👥 Joueurs connectés: ${totalPlayers}, Joueurs ayant terminé: ${actualPlayerCount}`);
+    
     for (let i = 1; i <= 10; i++) {
         let yesCount = 0;
         let noCount = 0;
         
-        // Compter les réponses pour cette question
-        session.players.forEach(player => {
+        // Compter les réponses pour cette question (seulement des joueurs ayant terminé)
+        completedPlayers.forEach(player => {
             console.log(`🔍 Vérification joueur ${player.playerName}:`, player.answers);
             if (player.answers && player.answers[i]) {
                 if (player.answers[i] === 'yes') {
@@ -322,15 +328,20 @@ function calculateCollectiveStats(session) {
             yesCount,
             noCount,
             totalResponses,
+            totalPlayers: actualPlayerCount, // Utiliser le nombre réel de joueurs ayant terminé
             yesPercentage: totalResponses > 0 ? Math.round((yesCount / totalResponses) * 100) : 0,
             noPercentage: totalResponses > 0 ? Math.round((noCount / totalResponses) * 100) : 0
         };
         
-        console.log(`📊 Question ${i}: ${yesCount} Oui, ${noCount} Non (${totalResponses} réponses total)`);
+        console.log(`📊 Question ${i}: ${yesCount} Oui, ${noCount} Non (${totalResponses} réponses sur ${actualPlayerCount} joueurs)`);
     }
     
-    console.log(`📈 Statistiques finales calculées pour ${totalPlayers} joueurs`);
-    return collectiveStats;
+    console.log(`📈 Statistiques finales calculées pour ${actualPlayerCount} joueurs ayant terminé`);
+    return {
+        collectiveStats,
+        totalPlayers: actualPlayerCount,
+        sessionCode: session.gameCode
+    };
 }
 
 // Route pour servir les fichiers statiques
