@@ -15,8 +15,8 @@ class SocketManager {
             return false;
         }
 
-        // Se connecter au serveur Socket.io automatiquement
-        this.socket = io('http://localhost:3000', {
+        // Se connecter au serveur Socket.io automatiquement (URL relative pour le déploiement)
+        this.socket = io({
             transports: ['websocket', 'polling'],
             timeout: 10000,
             reconnection: true,
@@ -87,28 +87,19 @@ class SocketManager {
         this.currentGameCode = gameCode;
         this.playerName = playerName || `Player_${Date.now()}`;
 
-        // Si connecté, rejoindre immédiatement
-        if (this.isConnected) {
+        console.log(`🎮 Tentative de rejoindre la session ${gameCode} en tant que ${this.playerName}`);
+
+        // Toujours essayer d'émettre, même si pas connecté
+        if (this.socket) {
             this.socket.emit('join-session', {
                 gameCode: gameCode,
                 playerName: this.playerName
             });
-            return true;
+            console.log(`📤 Émission join-session pour ${gameCode}`);
+        } else {
+            console.error('❌ Socket non disponible');
         }
-
-        // Sinon, attendre la connexion automatique
-        const checkConnection = () => {
-            if (this.isConnected) {
-                this.socket.emit('join-session', {
-                    gameCode: gameCode,
-                    playerName: this.playerName
-                });
-            } else {
-                setTimeout(checkConnection, 500);
-            }
-        };
         
-        checkConnection();
         return true;
     }
 

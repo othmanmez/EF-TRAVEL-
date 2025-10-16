@@ -9,8 +9,10 @@ const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
         origin: "*",
-        methods: ["GET", "POST"]
-    }
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    allowEIO3: true
 });
 
 // Middleware
@@ -61,6 +63,7 @@ io.on('connection', (socket) => {
         socket.join(gameCode);
         
         console.log(`👥 Session ${gameCode}: ${session.players.size} joueur(s) connecté(s)`);
+        console.log(`📋 Joueurs dans la session:`, Array.from(session.players.values()).map(p => p.playerName));
         
         // Notifier tous les joueurs de la session
         io.to(gameCode).emit('player-joined', {

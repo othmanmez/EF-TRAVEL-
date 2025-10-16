@@ -435,15 +435,26 @@ function updatePlayerCount() {
         try {
             const gameData = JSON.parse(currentGame);
             if (gameData.isMultiplayer && gameData.gameCode) {
-                const sessionData = getSessionDataFromStorage(gameData.gameCode);
                 const playerCountInfo = document.getElementById('playerCountInfo');
                 const playerCount = document.getElementById('playerCount');
                 
-                if (sessionData && sessionData.playerCount) {
-                    playerCountInfo.style.display = 'block';
-                    playerCount.textContent = sessionData.playerCount;
-                } else {
-                    playerCountInfo.style.display = 'none';
+                if (playerCountInfo && playerCount) {
+                    // Essayer d'obtenir le nombre de joueurs via Socket.io
+                    if (window.socketManager && window.socketManager.isConnected) {
+                        playerCountInfo.style.display = 'block';
+                        playerCount.textContent = '...';
+                        // Le nombre sera mis à jour par les événements Socket.io
+                    } else {
+                        // Mode fallback localStorage
+                        const sessionData = getSessionDataFromStorage(gameData.gameCode);
+                        if (sessionData && sessionData.playerCount) {
+                            playerCountInfo.style.display = 'block';
+                            playerCount.textContent = sessionData.playerCount;
+                        } else {
+                            playerCountInfo.style.display = 'block';
+                            playerCount.textContent = '1';
+                        }
+                    }
                 }
             }
         } catch (error) {
